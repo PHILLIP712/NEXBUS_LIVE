@@ -102,7 +102,7 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
-/* Live Radar Radar Pulse Ring */
+/* Live Radar Pulse Ring */
 .bus-pulse {
   position: absolute;
   width: 32px;
@@ -146,7 +146,6 @@ body {
   box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
 }
 
-/* Fast tap response for mobile navigation */
 button,
 input,
 li {

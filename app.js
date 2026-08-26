@@ -18,6 +18,7 @@ let isTrackingConfirmed = false;
 let selectedPickupStop = null;
 let selectedDestStop = null;
 let busNearestStopIdx = 0;
+let activeTransferPlan = null;
 
 // Maximum stops a bus can be ahead of pickup before being hidden
 const MAX_CATCH_STOPS_AHEAD = 3;
@@ -350,19 +351,29 @@ function closeBottomSheet() {
 }
 
 // ==========================================
-// 4. ROUTE SEARCH ENGINE
+// 4. ROUTE SEARCH ENGINE (DIRECT & 1-TRANSFER)
 // ==========================================
 function updateDirectionBannerText() {
   if (!window.ROUTES_DATABASE || !activeRouteKey) return;
   const routeConfig = window.ROUTES_DATABASE[activeRouteKey];
   if (!routeConfig) return;
 
-  const terminals = routeConfig.subTitle.split("<->");
-  const startTerm = terminals[0] ? terminals[0].trim() : "";
-  const endTerm = terminals[1] ? terminals[1].trim() : "";
+  const parts = (routeConfig.subTitle || "").split(/<->|↔|->|-/).map(s => s.trim()).filter(Boolean);
+  const startTerm = parts[0] || "";
+  const endTerm = parts[1] || "";
 
   const labelElem = document.getElementById("currentDirectionLabel");
   if (!labelElem) return;
+
+  if (activeTransferPlan) {
+    const r1Name = window.ROUTES_DATABASE[activeTransferPlan.leg1.routeKey]?.name || "Bus 1";
+    const r2Name = window.ROUTES_DATABASE[activeTransferPlan.leg2.routeKey]?.name || "Bus 2";
+    labelElem.innerHTML = `
+      <span class="bg-amber-100 text-amber-800 px-2 py-0.5 rounded text-[10px] font-extrabold mr-1">1 TRANSFER</span>
+      <span class="text-slate-900 font-bold">${r1Name}</span> ➔ Change at <b class="text-sky-700">${activeTransferPlan.transferStopName}</b> ➔ <span class="text-slate-900 font-bold">${r2Name}</span>
+    `;
+    return;
+  }
 
   if (currentDirection === "UP") {
     labelElem.innerHTML = `<span class="text-slate-900">${routeConfig.name}:</span> ${startTerm} <span class="text-emerald-600 font-bold">➔</span> ${endTerm}`;
@@ -372,27 +383,94 @@ function updateDirectionBannerText() {
 }
 
 function findMatchingRoutes(pName, dName) {
-  const matches = [];
   const pNorm = normalizeStr(pName);
   const dNorm = normalizeStr(dName);
+  const directMatches = [];
+  const transferMatches = [];
 
-  if (!window.ROUTES_DATABASE) return matches;
+  if (!window.ROUTES_DATABASE) return { direct: [], transfers: [] };
 
-  for (const [rKey, rObj] of Object.entries(window.ROUTES_DATABASE)) {
+  const allRouteKeys = Object.keys(window.ROUTES_DATABASE);
+
+  // --- A. DIRECT ROUTE CHECK ---
+  for (const rKey of allRouteKeys) {
+    const rObj = window.ROUTES_DATABASE[rKey];
+    
+    // UP / Forward Direction
     const pUp = rObj.forwardStops.findIndex(s => normalizeStr(s.name).includes(pNorm));
     const dUp = rObj.forwardStops.findIndex(s => normalizeStr(s.name).includes(dNorm));
     if (pUp !== -1 && dUp !== -1 && pUp < dUp) {
-      matches.push({ routeKey: rKey, direction: "UP", stops: rObj.forwardStops });
+      directMatches.push({ type: 'DIRECT', routeKey: rKey, direction: "UP", stops: rObj.forwardStops });
       continue;
     }
 
+    // DOWN / Return Direction
     const pDown = rObj.returnStops.findIndex(s => normalizeStr(s.name).includes(pNorm));
     const dDown = rObj.returnStops.findIndex(s => normalizeStr(s.name).includes(dNorm));
     if (pDown !== -1 && dDown !== -1 && pDown < dDown) {
-      matches.push({ routeKey: rKey, direction: "DOWN", stops: rObj.returnStops });
+      directMatches.push({ type: 'DIRECT', routeKey: rKey, direction: "DOWN", stops: rObj.returnStops });
     }
   }
-  return matches;
+
+  if (directMatches.length > 0) {
+    return { direct: directMatches, transfers: [] };
+  }
+
+  // --- B. 1-TRANSFER (BREAK ROUTE) CHECK ---
+  for (const r1Key of allRouteKeys) {
+    const r1 = window.ROUTES_DATABASE[r1Key];
+    const directions1 = [
+      { dir: "UP", stops: r1.forwardStops },
+      { dir: "DOWN", stops: r1.returnStops }
+    ];
+
+    for (const leg1 of directions1) {
+      const pIdx = leg1.stops.findIndex(s => normalizeStr(s.name).includes(pNorm));
+      if (pIdx === -1) continue;
+
+      for (let tIdx = pIdx + 1; tIdx < leg1.stops.length; tIdx++) {
+        const transferStop = leg1.stops[tIdx];
+        const tNorm = normalizeStr(transferStop.name);
+
+        for (const r2Key of allRouteKeys) {
+          if (r2Key === r1Key) continue;
+          const r2 = window.ROUTES_DATABASE[r2Key];
+          const directions2 = [
+            { dir: "UP", stops: r2.forwardStops },
+            { dir: "DOWN", stops: r2.returnStops }
+          ];
+
+          for (const leg2 of directions2) {
+            const t2Idx = leg2.stops.findIndex(s => normalizeStr(s.name).includes(tNorm));
+            const d2Idx = leg2.stops.findIndex(s => normalizeStr(s.name).includes(dNorm));
+
+            if (t2Idx !== -1 && d2Idx !== -1 && t2Idx < d2Idx) {
+              transferMatches.push({
+                type: 'TRANSFER',
+                transferStopName: transferStop.name,
+                leg1: {
+                  routeKey: r1Key,
+                  direction: leg1.dir,
+                  stops: leg1.stops,
+                  pickupStop: leg1.stops[pIdx],
+                  transferStop: leg1.stops[tIdx]
+                },
+                leg2: {
+                  routeKey: r2Key,
+                  direction: leg2.dir,
+                  stops: leg2.stops,
+                  transferStop: leg2.stops[t2Idx],
+                  destStop: leg2.stops[d2Idx]
+                }
+              });
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return { direct: [], transfers: transferMatches };
 }
 
 function handleSearchClick() {
@@ -404,29 +482,45 @@ function handleSearchClick() {
     return;
   }
 
-  const matchingRoutes = findMatchingRoutes(pickVal, destVal);
+  const result = findMatchingRoutes(pickVal, destVal);
 
-  if (matchingRoutes.length === 0) {
-    alert("No direct bus route found between these stops in this direction.");
+  if (result.direct.length > 0) {
+    activeTransferPlan = null;
+    const primary = result.direct[0];
+    activeRouteKey = primary.routeKey;
+    currentDirection = primary.direction;
+    currentStopsList = primary.stops;
+
+    const pNorm = normalizeStr(pickVal);
+    const dNorm = normalizeStr(destVal);
+    selectedPickupStop = currentStopsList.find(s => normalizeStr(s.name).includes(pNorm));
+    selectedDestStop = currentStopsList.find(s => normalizeStr(s.name).includes(dNorm));
+
+    updateDirectionBannerText();
+    updateTripSummaryUI();
+    openBottomSheet();
+    renderSchedulePreview();
+    updateAvailableBusesList();
     return;
   }
 
-  const primary = matchingRoutes[0];
-  activeRouteKey = primary.routeKey;
-  currentDirection = primary.direction;
-  currentStopsList = primary.stops;
+  if (result.transfers.length > 0) {
+    activeTransferPlan = result.transfers[0];
+    activeRouteKey = activeTransferPlan.leg1.routeKey;
+    currentDirection = activeTransferPlan.leg1.direction;
+    currentStopsList = activeTransferPlan.leg1.stops;
+    selectedPickupStop = activeTransferPlan.leg1.pickupStop;
+    selectedDestStop = activeTransferPlan.leg1.transferStop;
 
-  const pNorm = normalizeStr(pickVal);
-  const dNorm = normalizeStr(destVal);
-  selectedPickupStop = currentStopsList.find(s => normalizeStr(s.name).includes(pNorm));
-  selectedDestStop = currentStopsList.find(s => normalizeStr(s.name).includes(dNorm));
+    updateDirectionBannerText();
+    updateTripSummaryUI();
+    openBottomSheet();
+    renderSchedulePreview();
+    updateAvailableBusesList();
+    return;
+  }
 
-  updateDirectionBannerText();
-  updateTripSummaryUI();
-
-  openBottomSheet();
-  renderSchedulePreview();
-  updateAvailableBusesList();
+  alert("No direct or connecting route found between these locations in this direction.");
 }
 
 // Dynamic Trip Summary (Recalculates from Live Catch Point)
@@ -438,7 +532,6 @@ function updateTripSummaryUI() {
   
   if (pIdx === -1 || dIdx === -1 || pIdx >= dIdx) return;
 
-  // Latch start to live catch stop if original pickup was missed
   const activeStartIdx = (isTrackingConfirmed && busNearestStopIdx > pIdx && busNearestStopIdx < dIdx) 
     ? busNearestStopIdx 
     : pIdx;
@@ -548,7 +641,6 @@ function renderRoutePins(autoFit = false) {
 
   if (pIdx === -1 || dIdx === -1 || pIdx >= dIdx) return;
 
-  // Shift polyline to start from live position if original pickup was missed
   const activeStartIdx = Math.max(pIdx, busNearestStopIdx);
   const displayStartIdx = Math.min(activeStartIdx, dIdx);
 
@@ -589,7 +681,7 @@ function renderRoutePins(autoFit = false) {
 }
 
 // ==========================================
-// 6. MULTI-BUS DRAWER (EXPLICIT LOCATION NAMING)
+// 6. MULTI-BUS DRAWER (ACCURATE DIRECTIONAL ROUTE LABELS)
 // ==========================================
 function updateAvailableBusesList() {
   const container = document.getElementById("busesListContainer");
@@ -616,14 +708,12 @@ function updateAvailableBusesList() {
     const busCurrentIdx = findBusNearestStopIndex(bus.lat, bus.lng, currentStopsList);
     const busLocName = currentStopsList[busCurrentIdx]?.name || "En Route";
 
-    // Hide if bus has passed destination
     if (userDestIdx !== -1 && busCurrentIdx >= userDestIdx) return;
 
     const hasPassedPickup = (userPickupIdx !== -1 && busCurrentIdx > userPickupIdx);
     const stopsAhead = busCurrentIdx - userPickupIdx;
 
     if (!hasPassedPickup) {
-      // Standard Case: Approaching pickup stop
       const etaSec = userPickupIdx !== -1 ? calculateEtaSeconds(bus.lat, bus.lng, bus.spd, userPickupIdx, currentStopsList) : Infinity;
 
       let distMeters = getDistanceMeters(bus.lat, bus.lng, currentStopsList[busCurrentIdx].lat, currentStopsList[busCurrentIdx].lng) * 1.25;
@@ -643,7 +733,6 @@ function updateAvailableBusesList() {
         stopsAway: userPickupIdx - busCurrentIdx
       });
     } else if (stopsAhead <= MAX_CATCH_STOPS_AHEAD) {
-      // Catch Mode: Offer upcoming stop the bus is currently approaching (busCurrentIdx)
       const catchStopIdx = busCurrentIdx;
       if (catchStopIdx < userDestIdx && catchStopIdx < currentStopsList.length) {
         const catchStop = currentStopsList[catchStopIdx];
@@ -721,6 +810,19 @@ function updateAvailableBusesList() {
       `;
     }
 
+    // Directional terminal separator parser
+    let startTerm = "";
+    let endTerm = "";
+    if (item.bus.subTitle) {
+      const parts = item.bus.subTitle.split(/<->|↔|->|-/).map(s => s.trim()).filter(Boolean);
+      startTerm = parts[0] || "";
+      endTerm = parts[1] || "";
+    }
+
+    const displayDirection = (item.bus.busDir === "DOWN" || currentDirection === "DOWN")
+      ? `${endTerm} ➔ ${startTerm}`
+      : `${startTerm} ➔ ${endTerm}`;
+
     card.className = `p-3 rounded-2xl border-2 transition-all flex items-center justify-between cursor-pointer ${cardStyle}`;
     card.onclick = () => selectBus(item.plate);
 
@@ -730,7 +832,9 @@ function updateAvailableBusesList() {
           ${item.bus.route}
         </div>
         <div>
-          <div class="text-xs font-bold text-sky-900 leading-tight">${item.bus.route} : <span class="text-slate-600 font-medium">${item.bus.subTitle}</span></div>
+          <div class="text-xs font-bold text-sky-900 leading-tight">
+            ${item.bus.route} : <span class="text-slate-700 font-semibold">${displayDirection}</span>
+          </div>
           <div class="text-[10px] text-slate-500 font-medium mt-0.5">
             📍 <span class="text-slate-800 font-semibold">${item.currentLocationName}</span> • <span class="font-mono text-slate-400">${item.bus.plate}</span>
           </div>
@@ -772,7 +876,6 @@ function updateStopsTable(busLat, busLng, currentSpeedKmph) {
   const ROAD_CURVATURE = 1.25;
   let accRideDist = 0;
 
-  // Identify first valid upcoming stop on journey
   const liveCatchActualIdx = Math.max(pIdx, busAbsoluteIdx);
 
   journeyStops.forEach((stop, relIdx) => {
@@ -783,9 +886,8 @@ function updateStopsTable(busLat, busLng, currentSpeedKmph) {
     let etaLabel = "--";
     let remLabel = "--";
 
-    // Distance Accumulation Logic: Starts at 0.0 at the active boarding/catch stop
     if (actualStopIdx < liveCatchActualIdx) {
-      distLabel = "--"; // Departed stops show clean dashes
+      distLabel = "--";
     } else if (actualStopIdx === liveCatchActualIdx) {
       accRideDist = 0;
       distLabel = (actualStopIdx === pIdx) ? "0.0 km (Pickup)" : "0.0 km (Catch)";
@@ -796,13 +898,11 @@ function updateStopsTable(busLat, busLng, currentSpeedKmph) {
     }
 
     if (busAbsoluteIdx > actualStopIdx) {
-      // 1. Departed Stops
       etaLabel = "Departed";
       badgeClass = "bg-slate-100 text-slate-400";
       remLabel = "Missed";
       rowClass = "opacity-40";
     } else if (actualStopIdx === liveCatchActualIdx) {
-      // 2. Active Boarding Stop
       rowClass = "bg-emerald-50/80 border-l-4 border-emerald-500 font-bold text-slate-900";
       const stopEtaSec = calculateEtaSeconds(busLat, busLng, currentSpeedKmph, actualStopIdx, currentStopsList);
       etaLabel = formatEtaTime(stopEtaSec);
@@ -814,13 +914,11 @@ function updateStopsTable(busLat, busLng, currentSpeedKmph) {
         remLabel = `${stopsToPickup} stop${stopsToPickup > 1 ? 's' : ''} to arrival`;
       }
     } else if (relIdx === journeyStops.length - 1) {
-      // 3. Final Destination Stop
       rowClass = "bg-rose-50/80 border-l-4 border-rose-500 font-bold text-slate-900";
       const stopEtaSec = calculateEtaSeconds(busLat, busLng, currentSpeedKmph, actualStopIdx, currentStopsList);
       etaLabel = formatEtaTime(stopEtaSec);
       remLabel = "🏁 Final Stop";
     } else {
-      // 4. In-Ride Intermediate Stops
       const stopEtaSec = calculateEtaSeconds(busLat, busLng, currentSpeedKmph, actualStopIdx, currentStopsList);
       etaLabel = formatEtaTime(stopEtaSec);
       const rideStopsCount = actualStopIdx - liveCatchActualIdx;
