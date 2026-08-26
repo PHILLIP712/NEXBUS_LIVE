@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>NEXBUS_LIVE - Live Bus Tracker</title>
+  <title>NEXBUS_LIVE - Smart Bus Navigation</title>
   
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
@@ -20,13 +20,22 @@
   <!-- Top Search & Status Header -->
   <header class="relative z-20 w-full pt-4 px-4 flex flex-col items-center gap-2 pointer-events-none">
     
-    <!-- Active Trip Banner -->
-    <div id="activeTripBar" class="hidden pointer-events-auto flex items-center justify-between w-full max-w-2xl bg-white/95 backdrop-blur-md px-4 py-2.5 rounded-2xl shadow-xl border border-slate-200 text-xs transition-all duration-300">
-      <div class="flex items-center gap-2">
-        <span class="text-slate-500 font-bold">ACTIVE TRIP:</span>
-        <span id="currentDirectionLabel" class="text-sky-600 font-extrabold text-sm">--</span>
+    <!-- Active Trip & Trip Metrics Banner (Unclipped Full Names) -->
+    <div id="activeTripBar" class="hidden pointer-events-auto flex flex-wrap items-center justify-between w-full max-w-2xl bg-white/95 backdrop-blur-md px-4 py-2.5 rounded-2xl shadow-xl border border-slate-200 text-xs gap-2 transition-all duration-300">
+      <div class="flex items-center gap-2 flex-1 min-w-[200px]">
+        <span class="text-slate-400 font-bold uppercase text-[10px] tracking-wider shrink-0 bg-slate-100 px-2 py-0.5 rounded-md">TRIP</span>
+        <span id="currentDirectionLabel" class="text-sky-700 font-extrabold text-sm whitespace-normal break-words leading-tight">--</span>
       </div>
-      <span id="connBadge" class="px-2.5 py-0.5 rounded-full font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">Connecting...</span>
+      <div class="flex items-center gap-2 shrink-0 ml-auto">
+        <div id="tripStatsPill" class="hidden px-2.5 py-1 rounded-full font-bold bg-sky-50 text-sky-700 border border-sky-200 flex items-center gap-1.5 shadow-sm">
+          <i data-lucide="navigation-2" class="w-3 h-3"></i>
+          <span id="tripDistText">-- km</span> • <span id="tripDurationText">-- mins</span>
+        </div>
+        <span id="connBadge" class="px-2.5 py-1 rounded-full font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-sm flex items-center gap-1">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+          <span>Live Connected</span>
+        </span>
+      </div>
     </div>
 
     <!-- Search Controls -->
@@ -53,9 +62,17 @@
           <ul id="pickup-results" class="hidden absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-2xl border border-slate-200 max-h-56 overflow-y-auto custom-scrollbar z-50 divide-y divide-slate-100"></ul>
         </div>
 
-        <!-- Arrow Divider -->
-        <div class="hidden sm:flex items-center justify-center text-slate-400 px-1">
-          <i data-lucide="arrow-right" class="w-4 h-4"></i>
+        <!-- Interactive Swap / Rotate Button -->
+        <div class="flex items-center justify-center">
+          <button
+            id="swapBtn"
+            type="button"
+            onclick="swapPickupAndDestination()"
+            title="Swap Pickup and Destination"
+            class="p-2.5 rounded-xl text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 active:scale-95 transition-all duration-300 border border-transparent hover:border-emerald-200 group"
+          >
+            <i data-lucide="arrow-left-right" id="swapIcon" class="w-4 h-4 transition-transform duration-300 group-hover:rotate-180"></i>
+          </button>
         </div>
 
         <!-- Destination Input -->
@@ -116,7 +133,7 @@
   </div>
 
   <!-- Sliding Bottom Sheet Drawer -->
-  <div id="bottomSheet" class="bottom-sheet absolute bottom-0 left-0 right-0 h-[50vh] bg-white border-t-2 border-emerald-500 rounded-t-3xl shadow-2xl z-30 flex flex-col">
+  <div id="bottomSheet" class="bottom-sheet absolute bottom-0 left-0 right-0 h-[52vh] bg-white border-t-2 border-emerald-500 rounded-t-3xl shadow-2xl z-30 flex flex-col">
     <div class="p-2.5 flex flex-col items-center cursor-pointer bg-slate-50 rounded-t-3xl border-b border-slate-200" onclick="toggleBottomSheet()">
       <div class="w-10 h-1 bg-slate-300 rounded-full mb-1"></div>
       <div id="sheetTitleText" class="text-xs font-bold text-slate-700 uppercase tracking-wider">Available Buses & Route Schedule</div>
@@ -129,7 +146,10 @@
       <!-- Stop Schedule Column -->
       <div class="md:col-span-2 flex flex-col overflow-hidden bg-white relative">
         <div id="scheduleToolbar" class="p-2.5 px-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-          <span class="text-xs font-bold text-slate-600">Live Stop Timeline</span>
+          <div class="flex items-center gap-3">
+            <span class="text-xs font-bold text-slate-600">Your Journey Stops</span>
+            <span id="journeyStopsCount" class="text-[11px] font-semibold text-slate-400"></span>
+          </div>
           <button id="btnTrackAction" onclick="toggleTrackingAction()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-4 py-2 rounded-xl shadow-md shadow-emerald-600/20 transition-all flex items-center gap-1.5 active:scale-95">
             <i data-lucide="check" class="w-3.5 h-3.5"></i>
             <span id="btnTrackActionText">Confirm Route & Track</span>
