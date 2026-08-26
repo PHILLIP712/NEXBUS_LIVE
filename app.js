@@ -134,7 +134,7 @@ function calculateEtaToStopIndex(busLat, busLng, busSpeedKmph, targetStopIdx, st
 
   const busIdx = findBusNearestStopIndex(busLat, busLng, stops);
   if (busIdx > targetStopIdx) {
-    return "Departed"; // Bus already passed this stop
+    return "Departed";
   }
 
   const ROAD_CURVATURE = 1.25;
@@ -161,7 +161,7 @@ function calculateEtaToStopIndex(busLat, busLng, busSpeedKmph, targetStopIdx, st
   return formatEtaTime(travelSec);
 }
 
-// Detect individual vehicle's road heading
+// Detect vehicle's road heading
 function detectBusHeadingDirection(heading) {
   if (heading !== undefined && heading >= 0) {
     if (heading >= 15 && heading <= 135) return "UP";
@@ -478,13 +478,12 @@ function renderRoutePins() {
 }
 
 // ==========================================
-// 6. MULTI-BUS DRAWER CARDS (DIRECTION & DEPARTURE FILTERED)
+// 6. MULTI-BUS DRAWER CARDS (CLEAR STATUS INDICATORS)
 // ==========================================
 function updateAvailableBusesList() {
   const container = document.getElementById("busesListContainer");
   container.innerHTML = "";
 
-  // 1. Get user pickup stop index along current route list
   let userPickupIdx = -1;
   if (selectedPickupStop) {
     userPickupIdx = currentStopsList.findIndex(
@@ -492,61 +491,56 @@ function updateAvailableBusesList() {
     );
   }
 
-  // 2. Filter buses strictly:
-  //    - Must match searched route (or first available route if browsing)
-  //    - Must match searched direction
-  //    - Must NOT have already passed the user's pickup stop!
-  const qualifyingBuses = Object.entries(activeBuses).filter(([plate, bus]) => {
+  // Find all buses matching route and direction
+  const routeBuses = Object.entries(activeBuses).filter(([plate, bus]) => {
     const isSameRoute = !activeRouteKey || (normalizeStr(bus.route) === normalizeStr(activeRouteKey));
     const isSameDirection = !selectedPickupStop || (bus.busDir === currentDirection);
-
-    if (!isSameRoute || !isSameDirection) return false;
-
-    // Verify bus is BEHIND or AT the stop
-    if (userPickupIdx !== -1) {
-      const busCurrentIdx = findBusNearestStopIndex(bus.lat, bus.lng, currentStopsList);
-      if (busCurrentIdx > userPickupIdx) {
-        return false; // Bus already departed / passed the user's boarding point!
-      }
-    }
-
-    return true;
+    return isSameRoute && isSameDirection;
   });
 
-  if (qualifyingBuses.length === 0) {
+  if (routeBuses.length === 0) {
     const dirText = currentDirection === "UP" ? "Forward (UP)" : "Return (DOWN)";
-    let msg = `No active buses currently moving in the <b>${dirText}</b> direction on ${activeRouteKey || 'this route'}.`;
-    if (userPickupIdx !== -1) {
-      msg = `No upcoming buses for <b>${selectedPickupStop.name}</b> (any buses in this direction have already departed this stop).`;
-    }
-
     container.innerHTML = `
       <div class="p-4 text-center text-slate-400 text-xs">
-        ${msg}
+        No active buses currently operating in the <b>${dirText}</b> direction.
       </div>
     `;
     return;
   }
 
-  // Automatically select the first upcoming qualifying bus if none selected
-  if (!selectedBusPlate || !qualifyingBuses.some(([plate]) => plate === selectedBusPlate)) {
-    selectedBusPlate = qualifyingBuses[0][0];
-  }
-
-  for (const [plate, bus] of qualifyingBuses) {
+  for (const [plate, bus] of routeBuses) {
     const isSelected = (plate === selectedBusPlate);
+    const busCurrentIdx = findBusNearestStopIndex(bus.lat, bus.lng, currentStopsList);
+    const hasPassedPickup = (userPickupIdx !== -1 && busCurrentIdx > userPickupIdx);
+
     const card = document.createElement("div");
 
-    // Dynamic Live Pickup ETA calculation
-    let etaLabel = bus.etaToPickupMin || "--";
-    if (userPickupIdx !== -1) {
-      etaLabel = calculateEtaToStopIndex(bus.lat, bus.lng, bus.spd, userPickupIdx, currentStopsList);
+    let badgeHtml = "";
+    let cardStyle = "";
+
+    if (hasPassedPickup) {
+      const stopsAhead = busCurrentIdx - userPickupIdx;
+      cardStyle = "bg-slate-100/80 border-slate-200 opacity-60 cursor-not-allowed";
+      badgeHtml = `
+        <div class="text-[10px] text-rose-600 font-bold uppercase tracking-wider">PASSED PICKUP</div>
+        <div class="text-[11px] font-semibold text-slate-500">${stopsAhead} stop${stopsAhead > 1 ? 's' : ''} ahead</div>
+      `;
+    } else {
+      const etaLabel = userPickupIdx !== -1
+        ? calculateEtaToStopIndex(bus.lat, bus.lng, bus.spd, userPickupIdx, currentStopsList)
+        : (bus.etaToPickupMin || "--");
+
+      cardStyle = isSelected ? 'bg-sky-50/70 border-sky-500 shadow-sm cursor-pointer' : 'bg-white border-slate-200 hover:border-slate-300 cursor-pointer';
+      badgeHtml = `
+        <div class="text-[10px] text-emerald-600 font-bold uppercase tracking-wider">PICKUP ETA</div>
+        <div class="text-xs font-extrabold text-slate-800 mt-0.5">${etaLabel}</div>
+      `;
     }
 
-    card.className = `p-3 rounded-2xl border-2 transition-all cursor-pointer flex items-center justify-between ${
-      isSelected ? 'bg-sky-50/70 border-sky-500 shadow-sm' : 'bg-white border-slate-200 hover:border-slate-300'
-    }`;
-    card.onclick = () => selectBus(plate);
+    card.className = `p-3 rounded-2xl border-2 transition-all flex items-center justify-between ${cardStyle}`;
+    if (!hasPassedPickup) {
+      card.onclick = () => selectBus(plate);
+    }
 
     card.innerHTML = `
       <div class="flex items-center gap-3">
@@ -559,8 +553,7 @@ function updateAvailableBusesList() {
         </div>
       </div>
       <div class="text-right">
-        <div class="text-[10px] text-emerald-600 font-bold uppercase tracking-wider">PICKUP ETA</div>
-        <div class="text-xs font-extrabold text-slate-800 mt-0.5">${etaLabel}</div>
+        ${badgeHtml}
       </div>
     `;
     container.appendChild(card);
