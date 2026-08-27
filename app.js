@@ -39,6 +39,7 @@ map.on('click', () => closeBottomSheet());
 map.on('dragstart', () => closeBottomSheet());
 
 let routePolylineLayer = null;
+let approachPolylineLayer = null;
 let stopMarkersLayer = L.layerGroup().addTo(map);
 let breadcrumbLines = {};
 
@@ -64,7 +65,7 @@ function createDynamicBusMapIcon(routeString, busPlate, heading = 0, destTermina
         <div class="relative w-9 h-9 flex items-center justify-center my-0.5">
           <div class="bus-pulse"></div>
           
-          <!-- Direction Pointer Cone (Rotates with Telemetry Heading) -->
+          <!-- Direction Pointer Cone -->
           <div class="absolute inset-0 flex items-center justify-center pointer-events-none transition-transform duration-500 ease-linear" style="${rotationStyle}">
             <div class="w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-b-[10px] border-b-emerald-400 absolute -top-1.5 drop-shadow-md"></div>
           </div>
@@ -219,25 +220,44 @@ function calculateTripSummary(pickupStop, destStop, stopsList, effectiveSpeedKmp
   };
 }
 
-function updateBusDirectionFromMovement(busPlate, newLat, newLng, newHeading) {
+// ==========================================
+// ROBUST JITTER-PROOF DIRECTION STABILIZER
+// ==========================================
+function updateBusDirectionFromMovement(busPlate, newLat, newLng, newHeading, newSpeedKmph, payloadDir, routeConfig) {
+  // 1. If tracker explicitly supplies direction (e.g. payload "dir": "UP" or "DOWN"), prioritize it
+  if (payloadDir && (payloadDir.toUpperCase() === "UP" || payloadDir.toUpperCase() === "DOWN")) {
+    return payloadDir.toUpperCase();
+  }
+
   const prev = activeBuses[busPlate];
-  if (!prev) {
-    if (newHeading !== undefined && newHeading >= 0) {
-      if (newHeading >= 20 && newHeading <= 160) return "UP";
-      if (newHeading >= 200 && newHeading <= 340) return "DOWN";
+
+  // 2. If stationary or speed < 5 km/h, lock to previous state to ignore GPS drift
+  if (newSpeedKmph < 5.0) {
+    if (prev && prev.busDir) {
+      return prev.busDir;
     }
-    return "UP";
   }
 
-  const dLng = newLng - prev.lng;
-  const moved = getDistanceMeters(prev.lat, prev.lng, newLat, newLng);
-
-  if (moved >= 4.0) {
-    if (dLng > 0.00003) return "UP";
-    if (dLng < -0.00003) return "DOWN";
+  // 3. Evaluate heading only when bus is genuinely moving (speed >= 5.0 km/h)
+  if (newSpeedKmph >= 5.0 && newHeading !== undefined && newHeading >= 0) {
+    if (newHeading >= 20 && newHeading <= 160) return "UP";
+    if (newHeading >= 200 && newHeading <= 340) return "DOWN";
   }
 
-  return prev.busDir || "UP";
+  // 4. Physical displacement check (requires moving > 15 meters along the route)
+  if (prev && routeConfig) {
+    const moved = getDistanceMeters(prev.lat, prev.lng, newLat, newLng);
+    if (moved >= 15.0) {
+      const forwardStops = routeConfig.forwardStops || [];
+      const prevIdx = findBusNearestStopIndex(prev.lat, prev.lng, forwardStops);
+      const currIdx = findBusNearestStopIndex(newLat, newLng, forwardStops);
+      if (currIdx > prevIdx) return "UP";
+      if (currIdx < prevIdx) return "DOWN";
+    }
+    return prev.busDir || "UP";
+  }
+
+  return prev ? (prev.busDir || "UP") : "UP";
 }
 
 function scrollTableToActiveRow() {
@@ -868,14 +888,22 @@ function renderSchedulePreview() {
 }
 
 // ==========================================
-// 6. MAP POLYLINE
+// 6. DUAL-PHASE MAP POLYLINE (APPROACH VS RIDE)
 // ==========================================
 function renderRoutePins(autoFit = false) {
-  if (routePolylineLayer) map.removeLayer(routePolylineLayer);
+  if (routePolylineLayer) {
+    map.removeLayer(routePolylineLayer);
+    routePolylineLayer = null;
+  }
+  if (approachPolylineLayer) {
+    map.removeLayer(approachPolylineLayer);
+    approachPolylineLayer = null;
+  }
   stopMarkersLayer.clearLayers();
 
   if (!isTrackingConfirmed || !selectedPickupStop || !selectedDestStop) return;
 
+  // 1-Transfer Map Rendering
   if (activeTransferPlan) {
     const leg1Stops = activeTransferPlan.leg1.stops.slice(activeTransferPlan.leg1.pIdx, activeTransferPlan.leg1.tIdx + 1);
     const leg2Stops = activeTransferPlan.leg2.stops.slice(activeTransferPlan.leg2.tIdx, activeTransferPlan.leg2.dIdx + 1);
@@ -908,27 +936,51 @@ function renderRoutePins(autoFit = false) {
     return;
   }
 
+  // Direct Route Dual-Polyline Rendering
   const pIdx = currentStopsList.findIndex(s => normalizeStr(s.name) === normalizeStr(selectedPickupStop.name));
   const dIdx = currentStopsList.findIndex(s => normalizeStr(s.name) === normalizeStr(selectedDestStop.name));
 
   if (pIdx === -1 || dIdx === -1 || pIdx >= dIdx) return;
 
-  const displayStartIdx = (busNearestStopIdx > 0 && busNearestStopIdx < pIdx) ? busNearestStopIdx : pIdx;
-  const tripSegmentStops = currentStopsList.slice(displayStartIdx, dIdx + 1);
-  const pathPoints = tripSegmentStops.map(s => [s.lat, s.lng]);
+  // 1. Approach Path (Dashed Amber): From Bus Live Stop to Boarding Stop
+  if (busNearestStopIdx > 0 && busNearestStopIdx < pIdx) {
+    const approachStops = currentStopsList.slice(busNearestStopIdx, pIdx + 1);
+    const approachPoints = approachStops.map(s => [s.lat, s.lng]);
 
-  routePolylineLayer = L.polyline(pathPoints, {
-    color: '#059669',
-    weight: 6,
-    opacity: 0.9
-  }).addTo(map);
-
-  if (autoFit && pathPoints.length > 0) {
-    map.fitBounds(routePolylineLayer.getBounds(), { padding: [50, 50] });
+    approachPolylineLayer = L.polyline(approachPoints, {
+      color: '#f59e0b',
+      weight: 4,
+      dashArray: '8, 8',
+      opacity: 0.9
+    }).addTo(map);
   }
 
+  // 2. In-Ride Path (Solid Emerald): From Boarding Stop to Destination
+  const rideStops = currentStopsList.slice(pIdx, dIdx + 1);
+  const ridePoints = rideStops.map(s => [s.lat, s.lng]);
+
+  routePolylineLayer = L.polyline(ridePoints, {
+    color: '#059669',
+    weight: 6,
+    opacity: 0.95
+  }).addTo(map);
+
+  if (autoFit) {
+    const allVisiblePoints = (busNearestStopIdx > 0 && busNearestStopIdx < pIdx)
+      ? currentStopsList.slice(busNearestStopIdx, dIdx + 1).map(s => [s.lat, s.lng])
+      : ridePoints;
+      
+    if (allVisiblePoints.length > 0) {
+      map.fitBounds(L.polyline(allVisiblePoints).getBounds(), { padding: [50, 50] });
+    }
+  }
+
+  // Render Stop Markers
+  const startSpanIdx = (busNearestStopIdx > 0 && busNearestStopIdx < pIdx) ? busNearestStopIdx : pIdx;
+  const tripSegmentStops = currentStopsList.slice(startSpanIdx, dIdx + 1);
+
   tripSegmentStops.forEach((stop, index) => {
-    const actualIdx = displayStartIdx + index;
+    const actualIdx = startSpanIdx + index;
     let type = "regular";
     let label = `<b>Stop:</b> ${stop.name}`;
 
@@ -938,7 +990,7 @@ function renderRoutePins(autoFit = false) {
     } else if (actualIdx === dIdx) {
       type = "dest";
       label = `🔴 <b>Deboarding Stop:</b> ${stop.name}`;
-    } else if (actualIdx === busNearestStopIdx) {
+    } else if (actualIdx === busNearestStopIdx && busNearestStopIdx < pIdx) {
       type = "bus_loc";
       label = `🟡 <b>Bus Current Location:</b> ${stop.name}`;
     }
@@ -1129,7 +1181,7 @@ function selectBus(plate) {
 }
 
 // ==========================================
-// 8. STOP TIMELINE TABLE (ENHANCED LABELS)
+// 8. STOP TIMELINE TABLE
 // ==========================================
 function updateStopsTable(busLat, busLng, currentSpeedKmph) {
   if (!isTrackingConfirmed || !selectedPickupStop || !selectedDestStop) return;
@@ -1370,7 +1422,7 @@ function recenterMap() {
 }
 
 // ==========================================
-// 9. MQTT TELEMETRY (DYNAMIC ROTATING BUS MARKERS)
+// 9. MQTT TELEMETRY (SPEED-FILTERED STABILIZATION)
 // ==========================================
 updateAvailableBusesList();
 
@@ -1388,6 +1440,7 @@ client.on('message', (topic, message) => {
     const d = JSON.parse(message.toString());
     const busPlate = d.bus_no || "UNKNOWN";
     const rawRouteName = d.route || "77A_NOBATA";
+    const busSpeed = parseFloat(d.spd || 0);
 
     let resolvedRouteKey = Object.keys(window.ROUTES_DATABASE || {}).find(
       key => normalizeStr(key) === normalizeStr(rawRouteName)
@@ -1401,7 +1454,7 @@ client.on('message', (topic, message) => {
       updateDirectionBannerText();
     }
 
-    const detectedDir = updateBusDirectionFromMovement(busPlate, d.lat, d.lng, d.heading);
+    const detectedDir = updateBusDirectionFromMovement(busPlate, d.lat, d.lng, d.heading, busSpeed, d.dir, routeConfig);
 
     activeBuses[busPlate] = {
       plate: busPlate,
@@ -1410,7 +1463,7 @@ client.on('message', (topic, message) => {
       subTitle: routeConfig.subTitle,
       lat: d.lat,
       lng: d.lng,
-      spd: d.spd,
+      spd: busSpeed,
       heading: d.heading,
       busDir: detectedDir,
       lastSeen: Date.now()
@@ -1434,7 +1487,7 @@ client.on('message', (topic, message) => {
     breadcrumbLines[busPlate].addLatLng(pos);
 
     if (isTrackingConfirmed && busPlate === selectedBusPlate) {
-      updateStopsTable(d.lat, d.lng, d.spd);
+      updateStopsTable(d.lat, d.lng, busSpeed);
     } else {
       updateAvailableBusesList();
     }
