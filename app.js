@@ -224,27 +224,23 @@ function calculateTripSummary(pickupStop, destStop, stopsList, effectiveSpeedKmp
 // ROBUST JITTER-PROOF DIRECTION STABILIZER
 // ==========================================
 function updateBusDirectionFromMovement(busPlate, newLat, newLng, newHeading, newSpeedKmph, payloadDir, routeConfig) {
-  // 1. If tracker explicitly supplies direction (e.g. payload "dir": "UP" or "DOWN"), prioritize it
   if (payloadDir && (payloadDir.toUpperCase() === "UP" || payloadDir.toUpperCase() === "DOWN")) {
     return payloadDir.toUpperCase();
   }
 
   const prev = activeBuses[busPlate];
 
-  // 2. If stationary or speed < 5 km/h, lock to previous state to ignore GPS drift
   if (newSpeedKmph < 5.0) {
     if (prev && prev.busDir) {
       return prev.busDir;
     }
   }
 
-  // 3. Evaluate heading only when bus is genuinely moving (speed >= 5.0 km/h)
   if (newSpeedKmph >= 5.0 && newHeading !== undefined && newHeading >= 0) {
     if (newHeading >= 20 && newHeading <= 160) return "UP";
     if (newHeading >= 200 && newHeading <= 340) return "DOWN";
   }
 
-  // 4. Physical displacement check (requires moving > 15 meters along the route)
   if (prev && routeConfig) {
     const moved = getDistanceMeters(prev.lat, prev.lng, newLat, newLng);
     if (moved >= 15.0) {
@@ -1422,7 +1418,7 @@ function recenterMap() {
 }
 
 // ==========================================
-// 9. MQTT TELEMETRY (SPEED-FILTERED STABILIZATION)
+// 9. MQTT TELEMETRY
 // ==========================================
 updateAvailableBusesList();
 
