@@ -26,7 +26,7 @@ const activeBusMarkers = {};
 let selectedBusPlate = null;
 
 // ==========================================
-// 2. LEAFLET MAP SETUP
+// 2. LEAFLET MAP SETUP & DYNAMIC ROTATING MARKERS
 // ==========================================
 const map = L.map('map', { center: [22.5000, 88.2500], zoom: 12, zoomControl: false });
 
@@ -42,19 +42,43 @@ let routePolylineLayer = null;
 let stopMarkersLayer = L.layerGroup().addTo(map);
 let breadcrumbLines = {};
 
-function createDynamicBusMapIcon(routeString, busPlate) {
+function createDynamicBusMapIcon(routeString, busPlate, heading = 0, destTerminal = "") {
+  const rotationStyle = (heading !== undefined && heading !== null) 
+    ? `transform: rotate(${heading}deg);` 
+    : '';
+
+  const tagLabel = destTerminal 
+    ? `${routeString} ➔ ${destTerminal}` 
+    : routeString;
+
   return L.divIcon({
     className: '',
     html: `
-      <div class="bus-marker-wrapper">
-        <div class="bus-tag-top">${routeString}</div>
-        <div class="relative w-8 h-8 flex items-center justify-center">
+      <div class="bus-marker-wrapper flex flex-col items-center">
+        <!-- Top Route & Destination Tag -->
+        <div class="bus-tag-top whitespace-nowrap px-2 py-0.5 rounded shadow text-[10px] font-extrabold bg-sky-600 text-white flex items-center gap-1">
+          <span>${tagLabel}</span>
+        </div>
+
+        <!-- Bus Icon Container with Heading Pointer -->
+        <div class="relative w-9 h-9 flex items-center justify-center my-0.5">
           <div class="bus-pulse"></div>
+          
+          <!-- Direction Pointer Cone (Rotates with Telemetry Heading) -->
+          <div class="absolute inset-0 flex items-center justify-center pointer-events-none transition-transform duration-500 ease-linear" style="${rotationStyle}">
+            <div class="w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-b-[10px] border-b-emerald-400 absolute -top-1.5 drop-shadow-md"></div>
+          </div>
+
+          <!-- Central Bus Circle -->
           <div class="relative z-10 w-8 h-8 bg-slate-900 text-white rounded-full border-2 border-white shadow-xl flex items-center justify-center">
             <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6v6"/><path d="M15 6v6"/><path d="M2 12h19.6"/><path d="M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.4-.1-.8-.2-1.2l-1.4-5C20.1 6.8 19.1 6 18 6H4a2 2 0 0 0-2 2v10h3"/><circle cx="7" cy="18" r="2"/><circle cx="15" cy="18" r="2"/></svg>
           </div>
         </div>
-        <div class="bus-tag-bottom">${busPlate}</div>
+
+        <!-- Bottom Plate Tag -->
+        <div class="bus-tag-bottom px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-900 text-white border border-slate-700 shadow font-mono">
+          ${busPlate}
+        </div>
       </div>
     `,
     iconSize: [0, 0],
@@ -690,7 +714,15 @@ function updateTripSummaryUI() {
     document.getElementById("tripDistText").innerText = `${summary.distanceKm} km`;
     document.getElementById("tripDurationText").innerText = `${summary.rideDuration} in-ride`;
     document.getElementById("tripStatsPill").classList.remove("hidden");
-    document.getElementById("journeyStopsCount").innerText = `(${summary.totalStops} stops)`;
+    
+    const pIdx = currentStopsList.findIndex(s => normalizeStr(s.name) === normalizeStr(selectedPickupStop.name));
+    const approachingCount = (busNearestStopIdx > 0 && busNearestStopIdx < pIdx) ? (pIdx - busNearestStopIdx) : 0;
+    
+    if (approachingCount > 0) {
+      document.getElementById("journeyStopsCount").innerText = `(${summary.totalStops} stops ride • ${approachingCount} incoming)`;
+    } else {
+      document.getElementById("journeyStopsCount").innerText = `(${summary.totalStops} stops)`;
+    }
   }
 }
 
@@ -1030,8 +1062,8 @@ function updateAvailableBusesList() {
     const card = document.createElement("div");
 
     const distStr = item.distMeters >= 1000 
-      ? `${(item.distMeters / 1000).toFixed(1)} km away` 
-      : `${Math.round(item.distMeters)} m away`;
+      ? `${(item.distMeters / 1000).toFixed(1)} km to pickup` 
+      : `${Math.round(item.distMeters)} m to pickup`;
 
     const isBest = (rank === 0);
     const stopCountdownText = item.stopsAway === 0 
@@ -1097,7 +1129,7 @@ function selectBus(plate) {
 }
 
 // ==========================================
-// 8. STOP TIMELINE TABLE (FINAL CLEANUP)
+// 8. STOP TIMELINE TABLE (ENHANCED LABELS)
 // ==========================================
 function updateStopsTable(busLat, busLng, currentSpeedKmph) {
   if (!isTrackingConfirmed || !selectedPickupStop || !selectedDestStop) return;
@@ -1122,7 +1154,7 @@ function updateStopsTable(busLat, busLng, currentSpeedKmph) {
     const r1Name = window.ROUTES_DATABASE[activeTransferPlan.leg1.routeKey]?.name || "Bus 1";
     const r2Name = window.ROUTES_DATABASE[activeTransferPlan.leg2.routeKey]?.name || "Bus 2";
 
-    let stepNum = 1;
+    let rideStepNum = 1;
     let accRideDist = 0;
     const ROAD_CURVATURE = 1.25;
 
@@ -1133,16 +1165,22 @@ function updateStopsTable(busLat, busLng, currentSpeedKmph) {
       let distLabel = "--";
       let etaLabel = "--";
       let remLabel = "--";
+      let displayStepNum = "";
 
       if (actualStopIdx < activeTransferPlan.leg1.pIdx) {
+        displayStepNum = `<span class="text-amber-500 font-black text-xs">●</span>`;
         const dMeters = calculateAccurateBusToStopDistance(busLat, busLng, actualStopIdx, activeTransferPlan.leg1.stops);
-        distLabel = dMeters >= 1000 ? `${(dMeters / 1000).toFixed(1)} km` : `${Math.round(dMeters)} m`;
+        distLabel = dMeters >= 1000 ? `${(dMeters / 1000).toFixed(1)} km from bus` : `${Math.round(dMeters)} m from bus`;
       } else if (actualStopIdx === activeTransferPlan.leg1.pIdx) {
-        distLabel = "0.0 km (Pickup)";
+        displayStepNum = `${rideStepNum++}`;
+        const dToPickup = calculateAccurateBusToStopDistance(busLat, busLng, activeTransferPlan.leg1.pIdx, activeTransferPlan.leg1.stops);
+        const pickupDistStr = dToPickup >= 1000 ? `${(dToPickup / 1000).toFixed(1)} km` : `${Math.round(dToPickup)} m`;
+        distLabel = `${pickupDistStr} (Boarding)`;
       } else {
+        displayStepNum = `${rideStepNum++}`;
         const prev = activeTransferPlan.leg1.stops[actualStopIdx - 1];
         accRideDist += getDistanceMeters(prev.lat, prev.lng, stop.lat, stop.lng) * ROAD_CURVATURE;
-        distLabel = `${(accRideDist / 1000).toFixed(1)} km`;
+        distLabel = `+${(accRideDist / 1000).toFixed(1)} km ride`;
       }
 
       const dDirectToStop = getDistanceMeters(busLat, busLng, stop.lat, stop.lng);
@@ -1187,7 +1225,7 @@ function updateStopsTable(busLat, busLng, currentSpeedKmph) {
       const tr = document.createElement("tr");
       if (rowClass) tr.className = rowClass;
       tr.innerHTML = `
-        <td class="p-2.5 pl-4">${stepNum++}</td>
+        <td class="p-2.5 pl-4">${displayStepNum}</td>
         <td class="p-2.5 font-semibold text-slate-800">${stop.name} <span class="text-[10px] text-sky-700 font-bold">(${r1Name})</span></td>
         <td class="p-2.5 text-slate-600">${distLabel}</td>
         <td class="p-2.5 text-slate-600">${remLabel}</td>
@@ -1209,7 +1247,7 @@ function updateStopsTable(busLat, busLng, currentSpeedKmph) {
       const tr = document.createElement("tr");
       if (isFinal) tr.className = "bg-rose-50/80 border-l-4 border-rose-500 font-bold text-slate-900";
       tr.innerHTML = `
-        <td class="p-2.5 pl-4">${stepNum++}</td>
+        <td class="p-2.5 pl-4">${rideStepNum++}</td>
         <td class="p-2.5 font-semibold text-slate-800">${stop.name} <span class="text-[10px] text-amber-700 font-bold">(${r2Name})</span></td>
         <td class="p-2.5 text-slate-400">--</td>
         <td class="p-2.5 text-slate-500">${isFinal ? "🏁 Final Destination" : "Connecting Ride"}</td>
@@ -1241,6 +1279,7 @@ function updateStopsTable(busLat, busLng, currentSpeedKmph) {
 
   const ROAD_CURVATURE = 1.25;
   let accRideDist = 0;
+  let rideStepNum = 1;
 
   journeyStops.forEach((stop, relIdx) => {
     const actualStopIdx = startSpanIdx + relIdx;
@@ -1249,16 +1288,22 @@ function updateStopsTable(busLat, busLng, currentSpeedKmph) {
     let distLabel = "--";
     let etaLabel = "--";
     let remLabel = "--";
+    let displayStepNum = "";
 
     if (actualStopIdx < pIdx) {
+      displayStepNum = `<span class="text-amber-500 font-black text-xs">●</span>`;
       const dMeters = calculateAccurateBusToStopDistance(busLat, busLng, actualStopIdx, currentStopsList);
-      distLabel = dMeters >= 1000 ? `${(dMeters / 1000).toFixed(1)} km` : `${Math.round(dMeters)} m`;
+      distLabel = dMeters >= 1000 ? `${(dMeters / 1000).toFixed(1)} km from bus` : `${Math.round(dMeters)} m from bus`;
     } else if (actualStopIdx === pIdx) {
-      distLabel = "0.0 km (Pickup)";
+      displayStepNum = `${rideStepNum++}`;
+      const dToPickup = calculateAccurateBusToStopDistance(busLat, busLng, pIdx, currentStopsList);
+      const pickupDistStr = dToPickup >= 1000 ? `${(dToPickup / 1000).toFixed(1)} km` : `${Math.round(dToPickup)} m`;
+      distLabel = `${pickupDistStr} (Boarding)`;
     } else {
+      displayStepNum = `${rideStepNum++}`;
       const prev = currentStopsList[actualStopIdx - 1];
       accRideDist += getDistanceMeters(prev.lat, prev.lng, stop.lat, stop.lng) * ROAD_CURVATURE;
-      distLabel = `${(accRideDist / 1000).toFixed(1)} km`;
+      distLabel = (actualStopIdx === dIdx) ? `+${(accRideDist / 1000).toFixed(1)} km (Drop)` : `+${(accRideDist / 1000).toFixed(1)} km ride`;
     }
 
     const dDirectToStop = getDistanceMeters(busLat, busLng, stop.lat, stop.lng);
@@ -1303,7 +1348,7 @@ function updateStopsTable(busLat, busLng, currentSpeedKmph) {
     const tr = document.createElement("tr");
     if (rowClass) tr.className = rowClass;
     tr.innerHTML = `
-      <td class="p-2.5 pl-4">${relIdx + 1}</td>
+      <td class="p-2.5 pl-4">${displayStepNum}</td>
       <td class="p-2.5 font-semibold text-slate-800">${stop.name}</td>
       <td class="p-2.5 text-slate-600">${distLabel}</td>
       <td class="p-2.5 text-slate-600">${remLabel}</td>
@@ -1325,7 +1370,7 @@ function recenterMap() {
 }
 
 // ==========================================
-// 9. MQTT TELEMETRY
+// 9. MQTT TELEMETRY (DYNAMIC ROTATING BUS MARKERS)
 // ==========================================
 updateAvailableBusesList();
 
@@ -1371,15 +1416,20 @@ client.on('message', (topic, message) => {
       lastSeen: Date.now()
     };
 
+    const parts = (routeConfig.subTitle || "").split(/<->|↔|->|-/).map(s => s.trim()).filter(Boolean);
+    const destTerminal = (detectedDir === "DOWN") ? (parts[0] || "Down") : (parts[1] || "Up");
+
     const pos = [d.lat, d.lng];
+    const busHeading = d.heading !== undefined ? d.heading : (detectedDir === "UP" ? 45 : 225);
+
     if (!activeBusMarkers[busPlate]) {
       activeBusMarkers[busPlate] = L.marker(pos, {
-        icon: createDynamicBusMapIcon(routeConfig.name, busPlate)
+        icon: createDynamicBusMapIcon(routeConfig.name, busPlate, busHeading, destTerminal)
       }).addTo(map);
       breadcrumbLines[busPlate] = L.polyline([], { color: '#0284c7', weight: 4 }).addTo(map);
     } else {
       activeBusMarkers[busPlate].setLatLng(pos);
-      activeBusMarkers[busPlate].setIcon(createDynamicBusMapIcon(routeConfig.name, busPlate));
+      activeBusMarkers[busPlate].setIcon(createDynamicBusMapIcon(routeConfig.name, busPlate, busHeading, destTerminal));
     }
     breadcrumbLines[busPlate].addLatLng(pos);
 
