@@ -22,6 +22,7 @@ let busNearestStopIdx = 0;
 let activeTransferPlan = null;
 let currentTripPlanType = "DIRECT"; // "DIRECT" or "TRANSFER"
 let lastSearchResult = null;
+let hasAutoScrolledForCurrentTrip = false;
 
 const activeBuses = {};
 const activeBusMarkers = {};
@@ -270,17 +271,17 @@ function updateBusDirectionFromMovement(busPlate, newLat, newLng, newHeading, ne
   return prev ? (prev.busDir || "UP") : "UP";
 }
 
-function scrollTableToActiveRow() {
+function scrollTableToActiveRow(force = false) {
+  if (!isTrackingConfirmed && !force) return;
+  if (hasAutoScrolledForCurrentTrip && !force) return;
+
   setTimeout(() => {
     const tableContainer = document.querySelector("#bottomSheet .overflow-y-auto");
     const activeRow = document.querySelector(".active-target-stop");
-    if (tableContainer) {
-      if (activeRow) {
-        const topOffset = activeRow.offsetTop - tableContainer.offsetTop - 50;
-        tableContainer.scrollTo({ top: Math.max(0, topOffset), behavior: "smooth" });
-      } else {
-        tableContainer.scrollTo({ top: 0, behavior: "instant" });
-      }
+    if (tableContainer && activeRow) {
+      const topOffset = activeRow.offsetTop - tableContainer.offsetTop - 50;
+      tableContainer.scrollTo({ top: Math.max(0, topOffset), behavior: "smooth" });
+      hasAutoScrolledForCurrentTrip = true;
     }
   }, 80);
 }
@@ -643,7 +644,7 @@ function findMatchingRoutes(pName, dName) {
               const distLeg2 = getDistanceMeters(transferStop.lat, transferStop.lng, dStop.lat, dStop.lng);
               const totalTransferDist = distLeg1 + distLeg2;
 
-              // Geometric constraint against circular looping
+              // Geometric guard against circular looping
               if (totalTransferDist <= Math.max(distPickupToDest * 2.2, 7500) && distTransferToDest <= distPickupToDest + 1200) {
                 commonStops.push({
                   transferStopName: transferStop.name,
@@ -668,7 +669,6 @@ function findMatchingRoutes(pName, dName) {
             } else {
               // SAME DIRECTION (e.g. UP ➔ UP or DOWN ➔ DOWN):
               // Maximize passenger stretch on Leg 1: transfer at the FURTHEST shared stop along Leg 1 (maximum tIdx)
-              // (e.g. Brace Bridge for Eden City -> Howrah; Batanagar Bata More for Howrah -> Eden City)
               commonStops.sort((a, b) => b.tIdx - a.tIdx || a.distTransferToDest - b.distTransferToDest);
               bestTransfer = commonStops[0];
             }
@@ -900,6 +900,8 @@ function startTracking() {
     alert("Please select your stops and click Search first!");
     return;
   }
+
+  hasAutoScrolledForCurrentTrip = false;
 
   // Bind active upcoming bus plate for 1-Transfer routes
   if (currentTripPlanType === "TRANSFER" && activeTransferPlan) {
