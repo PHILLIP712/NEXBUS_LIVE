@@ -662,13 +662,11 @@ function findMatchingRoutes(pName, dName) {
             let bestTransfer = null;
 
             if (leg1.dir !== leg2.dir) {
-              // OPPOSITE DIRECTIONS (e.g. UP ➔ DOWN to pocket branches like Batanagar River Side):
-              // Transfer at the FIRST common intersection where routes cross
+              // OPPOSITE DIRECTIONS: Transfer at FIRST common intersection
               commonStops.sort((a, b) => a.tIdx - b.tIdx || a.totalDist - b.totalDist);
               bestTransfer = commonStops[0];
             } else {
-              // SAME DIRECTION (e.g. UP ➔ UP or DOWN ➔ DOWN):
-              // Maximize passenger stretch on Leg 1: transfer at the FURTHEST shared stop along Leg 1 (maximum tIdx)
+              // SAME DIRECTION: Transfer at the FURTHEST shared stop along Leg 1
               commonStops.sort((a, b) => b.tIdx - a.tIdx || a.distTransferToDest - b.distTransferToDest);
               bestTransfer = commonStops[0];
             }
@@ -721,7 +719,7 @@ function findMatchingRoutes(pName, dName) {
     }
   }
 
-  // Prioritize live Leg 1 bus, then live connecting bus, then shortest distance
+  // Prioritize live Leg 1 bus, then connecting bus, then shortest distance
   candidateTransfers.sort((a, b) => {
     const liveScoreA = (a.hasLiveLeg1 ? 2 : 0) + (a.hasLiveLeg2 ? 1 : 0);
     const liveScoreB = (b.hasLiveLeg1 ? 2 : 0) + (b.hasLiveLeg2 ? 1 : 0);
@@ -745,7 +743,7 @@ function handleSearchClick() {
   busNearestStopIdx = 0;
   selectedBusPlate = null;
 
-  // 1. Direct Routes Take Absolute Precedence (Live GPS preferred, otherwise Scheduled)
+  // 1. Direct Routes Take Absolute Precedence
   if (lastSearchResult.direct.length > 0) {
     selectDirectOption(0, false);
     return;
@@ -781,7 +779,6 @@ function selectDirectOption(index = 0, maintainTracking = false) {
   updateTripSummaryUI();
   openBottomSheet();
 
-  // Find candidate live buses heading same direction and upstream of pickup
   const upcomingBuses = Object.values(activeBuses).filter(b => {
     const isLine = normalizeStr(b.routeKey || b.route).includes(normalizeStr(activeRouteKey));
     if (!isLine || b.busDir !== currentDirection) return false;
@@ -825,7 +822,6 @@ function selectTransferOption(index = 0, maintainTracking = false) {
   updateTripSummaryUI();
   openBottomSheet();
 
-  // Find candidate live buses for Leg 1 heading in matching direction
   const upcomingLeg1Buses = Object.values(activeBuses).filter(b => {
     const isLine = normalizeStr(b.routeKey || b.route).includes(normalizeStr(activeTransferPlan.leg1.routeKey));
     if (!isLine || b.busDir !== activeTransferPlan.leg1.direction) return false;
@@ -903,7 +899,6 @@ function startTracking() {
 
   hasAutoScrolledForCurrentTrip = false;
 
-  // Bind active upcoming bus plate for 1-Transfer routes
   if (currentTripPlanType === "TRANSFER" && activeTransferPlan) {
     const upcomingLeg1Buses = Object.values(activeBuses).filter(b => {
       const isLine = normalizeStr(b.routeKey || b.route).includes(normalizeStr(activeTransferPlan.leg1.routeKey));
@@ -1337,7 +1332,7 @@ function updateAvailableBusesList() {
           </span>
         </div>
 
-        <!-- Stable Track Button -->
+        <!-- Track Button -->
         <div class="mt-3">
           <button onclick="event.stopPropagation(); selectTransferOption(${planIdx}, false); startTracking();" class="w-full bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white font-bold text-xs py-2 px-4 rounded-xl shadow-md shadow-blue-500/20 flex items-center justify-center gap-2 transition-all">
             <i data-lucide="map-pin" class="w-3.5 h-3.5"></i>
@@ -1479,7 +1474,7 @@ function updateAvailableBusesList() {
           </span>
         </div>
 
-        <!-- Stable Track Button -->
+        <!-- Track Button -->
         <div class="mt-3">
           <button onclick="event.stopPropagation(); selectBus('${item.plate}'); startTracking();" class="w-full bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white font-bold text-xs py-2 px-4 rounded-xl shadow-md shadow-blue-500/20 flex items-center justify-center gap-2 transition-all">
             <i data-lucide="map-pin" class="w-3.5 h-3.5"></i>
@@ -1789,19 +1784,28 @@ function recenterMap() {
 }
 
 // ==========================================
-// 9. THINGSPEAK TELEMETRY POLLER (WITH READ API KEY & SAFETY CHECKS)
+// 9. THINGSPEAK TELEMETRY POLLER (OFFICIAL REST ENDPOINT)
 // ==========================================
 updateAvailableBusesList();
 
-setInterval(async () => {
+async function pollThingSpeakTelemetry() {
   try {
     const channelId = "3473806";
     const readKey = "XZG3OYKRSOR5BRZK";
-    const res = await fetch(`https://api.thingspeak.com/channels/${channelId}/feeds/last.json?api_key=${readKey}`);
-    const d = await res.json();
+    const url = `https://api.thingspeak.com/channels/${channelId}/feeds.json?api_key=${readKey}&results=1`;
+    
+    const res = await fetch(url);
+    if (!res.ok) {
+      console.warn(`ThingSpeak HTTP Error: ${res.status}`);
+      return;
+    }
 
-    if (!d || !d.field1 || !d.field2) return;
+    const data = await res.json();
+    if (!data || !data.feeds || data.feeds.length === 0) return;
     if (!window.ROUTES_DATABASE) return;
+
+    const d = data.feeds[data.feeds.length - 1]; // Get latest feed entry
+    if (!d || !d.field1 || !d.field2) return;
 
     const busPlate = d.field6 || "WB42U2676";
     const rawRouteName = d.field5 || "77A_NOBATA";
@@ -1862,7 +1866,11 @@ setInterval(async () => {
   } catch (e) {
     console.error("ThingSpeak fetch error:", e);
   }
-}, 10000);
+}
+
+// Poll immediately on load, then repeat every 10 seconds
+pollThingSpeakTelemetry();
+setInterval(pollThingSpeakTelemetry, 10000);
 
 setInterval(() => {
   const now = Date.now();
