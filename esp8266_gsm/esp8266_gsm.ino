@@ -1,112 +1,144 @@
+#define TINY_GSM_MODEM_SIM800
 #include <SoftwareSerial.h>
+#include <TinyGsmClient.h>
+#include <PubSubClient.h>
 #include <TinyGPSPlus.h>
 
 // ============================================================
-// HARDWARE CONFIGURATION
+// HARDWARE & VEHICLE CONFIGURATION (EDIT FOR EACH VEHICLE)
 // ============================================================
-const char* ROUTE_ID          = "77A_NOBATA";
-const char* BUS_PLATE     = "WB42U2676";
-const char* THINGSPEAK_KEY    = "TSJ4BD1P0IT27XJG";
+const char* ROUTE_ID          = "77A_NOBATA";   // Route matching routes.js
+const char* BUS_PLATE         = "WB42U2676";    // Bus Number Plate
+const char* APN               = "bsnlnet";      // Cellular APN
+const char* GPRS_USER         = "";
+const char* GPRS_PASS         = "";
+
+const char* MQTT_BROKER       = "broker.hivemq.com";
+const int   MQTT_PORT         = 1883;
+const unsigned long SEND_INTERVAL = 3000;       // Broadcast every 3 seconds
 // ============================================================
 
-// SoftwareSerial for SIM800L (RX, TX) -> NodeMCU D2, D1
-SoftwareSerial gsmSerial(4, 5); 
+// SoftwareSerial for SIM800L (RX=D2/GPIO4, TX=D1/GPIO5)
+SoftwareSerial gsmSerial(4, 5);
+TinyGsm modem(gsmSerial);
+TinyGsmClient gsmClient(modem);
+PubSubClient mqttClient(gsmClient);
 
-// GPS Serial Pins (NodeMCU D5=RX, D6=TX)
-static const int RXPin = 14; 
-static const int TXPin = 12; 
-static const uint32_t GPSBaud = 9600;
-SoftwareSerial gpsSerial(RXPin, TXPin);
-
+// SoftwareSerial for GPS (RX=D5/GPIO14, TX=D6/GPIO12)
+SoftwareSerial gpsSerial(14, 12);
 TinyGPSPlus gps;
 
 const int GSM_RESET_PIN = 13; // D7
-const unsigned long POST_INTERVAL = 10000; // Send telemetry every 10 seconds
-unsigned long lastPostTime = 0;
+unsigned long lastSendTime = 0;
 
 void setup() {
   Serial.begin(115200);
-  delay(1000);
+  delay(500);
 
   pinMode(GSM_RESET_PIN, OUTPUT);
   digitalWrite(GSM_RESET_PIN, HIGH);
 
   gsmSerial.begin(9600);
-  gpsSerial.begin(GPSBaud);
+  gpsSerial.begin(9600);
   delay(1000);
 
-  Serial.println("\n--- Initializing ThingSpeak Cellular Bus Tracker ---");
-  
-  // Hardware reset SIM800L module
+  Serial.println("\n--- Starting Scalable Fleet Tracker ---");
+
+  // Hardware reboot SIM800L
   digitalWrite(GSM_RESET_PIN, LOW);
   delay(1000);
   digitalWrite(GSM_RESET_PIN, HIGH);
-  delay(6000); // Wait for module boot
+  delay(5000);
 
-  // Initialize BSNL GPRS connection
-  setupGPRS();
+  modem.restart();
+  connectCellularAndMQTT();
 }
 
 void loop() {
-  // Continuously ingest GPS data packets
+  // Feed GPS parser
   while (gpsSerial.available() > 0) {
     gps.encode(gpsSerial.read());
     yield();
   }
 
-  // Periodically send telemetry via GPRS HTTP GET
+  // Maintain MQTT session
+  if (!mqttClient.connected()) {
+    reconnectMQTT();
+  }
+  mqttClient.loop();
+
+  // Periodic Telemetry Broadcast
   unsigned long now = millis();
-  if (now - lastPostTime >= POST_INTERVAL) {
-    lastPostTime = now;
+  if (now - lastSendTime >= SEND_INTERVAL) {
+    lastSendTime = now;
 
     if (gps.location.isValid() && gps.location.lat() != 0.0) {
-      sendTelemetryData();
+      publishTelemetry();
     } else {
-      Serial.println("Waiting for valid GPS fix...");
+      Serial.println("Acquiring GPS fix...");
     }
   }
 }
 
-void sendATCommand(String cmd, int timeout) {
-  gsmSerial.println(cmd);
-  long int time = millis();
-  while ((millis() - time) < timeout) {
-    while (gsmSerial.available()) {
-      Serial.write(gsmSerial.read());
+void connectCellularAndMQTT() {
+  Serial.print("Connecting to cellular network...");
+  if (!modem.waitForNetwork(30000)) {
+    Serial.println(" FAIL");
+    return;
+  }
+  Serial.println(" OK");
+
+  Serial.print("Connecting to GPRS (");
+  Serial.print(APN);
+  Serial.print(")...");
+  if (!modem.gprsConnect(APN, GPRS_USER, GPRS_PASS)) {
+    Serial.println(" FAIL");
+    return;
+  }
+  Serial.println(" OK");
+
+  mqttClient.setServer(MQTT_BROKER, MQTT_PORT);
+  reconnectMQTT();
+}
+
+void reconnectMQTT() {
+  while (!mqttClient.connected()) {
+    String clientId = "BusFleet-" + String(BUS_PLATE) + "-" + String(random(1000, 9999));
+    Serial.print("Connecting to MQTT Broker as ");
+    Serial.print(clientId);
+    Serial.print("...");
+
+    if (mqttClient.connect(clientId.c_str())) {
+      Serial.println(" Connected!");
+    } else {
+      Serial.print(" Failed (rc=");
+      Serial.print(mqttClient.state());
+      Serial.println("). Retrying in 3s...");
+      delay(3000);
     }
   }
 }
 
-void setupGPRS() {
-  Serial.println("Setting up GPRS Bearer...");
-  sendATCommand("AT+SAPBR=3,1,\"Contype\",\"GPRS\"", 2000);
-  sendATCommand("AT+SAPBR=3,1,\"APN\",\"bsnlnet\"", 2000);
-  sendATCommand("AT+SAPBR=1,1", 5000);
-  sendATCommand("AT+SAPBR=2,1", 3000);
-}
+void publishTelemetry() {
+  String payload = "{";
+  payload += "\"route\":\"" + String(ROUTE_ID) + "\",";
+  payload += "\"bus_no\":\"" + String(BUS_PLATE) + "\",";
+  payload += "\"lat\":" + String(gps.location.lat(), 6) + ",";
+  payload += "\"lng\":" + String(gps.location.lng(), 6) + ",";
+  payload += "\"spd\":" + String(gps.speed.kmph(), 1) + ",";
+  payload += "\"heading\":" + String(gps.course.deg(), 1) + ",";
+  payload += "\"alt\":" + String(gps.altitude.meters(), 1) + ",";
+  payload += "\"sats\":" + String(gps.satellites.value()) + ",";
+  payload += "\"hdop\":" + String(gps.hdop.hdop(), 2);
+  payload += "}";
 
-void sendTelemetryData() {
-  Serial.println("\nSending telemetry to ThingSpeak...");
+  String topic = "citytransit/fleet/" + String(ROUTE_ID) + "/" + String(BUS_PLATE) + "/data";
+  topic.toLowerCase();
 
-  String url = "http://api.thingspeak.com/update?api_key=" + String(THINGSPEAK_KEY);
-  url += "&field1=" + String(gps.location.lat(), 6);
-  url += "&field2=" + String(gps.location.lng(), 6);
-  url += "&field3=" + String(gps.speed.kmph(), 1);
-  url += "&field4=" + String(gps.course.deg(), 1);
-  url += "&field5=" + String(ROUTE_ID);
-  url += "&field6=" + String(BUS_PLATE);
+  Serial.print("Publishing to ");
+  Serial.print(topic);
+  Serial.print(": ");
+  Serial.println(payload);
 
-  sendATCommand("AT+HTTPINIT", 2000);
-  sendATCommand("AT+HTTPPARA=\"CID\",1", 2000);
-  
-  gsmSerial.print("AT+HTTPPARA=\"URL\",\"");
-  gsmSerial.print(url);
-  gsmSerial.println("\"");
-  delay(1000);
-
-  sendATCommand("AT+HTTPACTION=0", 5000); // GET request
-  sendATCommand("AT+HTTPREAD", 3000);
-  sendATCommand("AT+HTTPTERM", 2000);
-  
-  Serial.println("Telemetry cycle complete.");
+  mqttClient.publish(topic.c_str(), payload.c_str());
 }

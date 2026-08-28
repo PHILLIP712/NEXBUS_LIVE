@@ -225,9 +225,6 @@ function calculateTripSummary(pickupStop, destStop, stopsList, effectiveSpeedKmp
   };
 }
 
-// ==========================================
-// ROBUST JITTER-PROOF DIRECTION STABILIZER
-// ==========================================
 function updateBusDirectionFromMovement(busPlate, newLat, newLng, newHeading, newSpeedKmph, payloadDir, routeConfig) {
   if (payloadDir && (payloadDir.toUpperCase() === "UP" || payloadDir.toUpperCase() === "DOWN")) {
     return payloadDir.toUpperCase();
@@ -286,9 +283,6 @@ function scrollTableToActiveRow(force = false) {
   }, 80);
 }
 
-// ==========================================
-// 3. AUTOCOMPLETE & SWAP ENGINE
-// ==========================================
 function getAllUniqueStops() {
   const mapUnique = new Map();
   if (!window.ROUTES_DATABASE) return [];
@@ -437,14 +431,10 @@ function closeBottomSheet() {
   }
 }
 
-// ==========================================
-// 4. SMART BANNER (STRICT PICKUP ➔ DESTINATION)
-// ==========================================
 function updateDirectionBannerText() {
   const labelElem = document.getElementById("currentDirectionLabel");
   if (!labelElem) return;
 
-  // 1-Transfer Trip Header
   if (currentTripPlanType === "TRANSFER" && activeTransferPlan) {
     const r1Name = window.ROUTES_DATABASE[activeTransferPlan.leg1.routeKey]?.name || "Bus 1";
     const r2Name = window.ROUTES_DATABASE[activeTransferPlan.leg2.routeKey]?.name || "Bus 2";
@@ -462,7 +452,6 @@ function updateDirectionBannerText() {
     return;
   }
 
-  // Multiple Lines Available Header
   if (activeMatchingRoutes.length > 1 && selectedPickupStop && selectedDestStop) {
     const totalLines = activeMatchingRoutes.length;
     labelElem.innerHTML = `
@@ -482,7 +471,6 @@ function updateDirectionBannerText() {
     return;
   }
 
-  // Single Direct Line: Show User's Exact Pickup ➔ Destination
   if (!window.ROUTES_DATABASE || !activeRouteKey || !selectedPickupStop || !selectedDestStop) return;
   const routeConfig = window.ROUTES_DATABASE[activeRouteKey];
   if (!routeConfig) return;
@@ -563,9 +551,6 @@ function closeLinesModal() {
   if (modal) modal.classList.add("hidden");
 }
 
-// ==========================================
-// UNIVERSAL GEOMETRIC & DIRECTIONAL ENGINE
-// ==========================================
 function findMatchingRoutes(pName, dName) {
   let pNorm = normalizeStr(pName);
   let dNorm = normalizeStr(dName);
@@ -596,7 +581,6 @@ function findMatchingRoutes(pName, dName) {
     }
   }
 
-  // If a direct route exists, return directly
   if (directMatches.length > 0) {
     return { direct: directMatches, transfers: [] };
   }
@@ -636,7 +620,6 @@ function findMatchingRoutes(pName, dName) {
 
             const t2Idx = leg2.stops.findIndex(s => normalizeStr(s.name).includes(tNorm) || (s.area && normalizeStr(s.area).includes(tNorm)));
 
-            // Leg 2 must move forward from transfer point to destination
             if (t2Idx !== -1 && t2Idx < d2Idx) {
               const distPickupToDest = getDistanceMeters(pStop.lat, pStop.lng, dStop.lat, dStop.lng);
               const distTransferToDest = getDistanceMeters(transferStop.lat, transferStop.lng, dStop.lat, dStop.lng);
@@ -644,7 +627,6 @@ function findMatchingRoutes(pName, dName) {
               const distLeg2 = getDistanceMeters(transferStop.lat, transferStop.lng, dStop.lat, dStop.lng);
               const totalTransferDist = distLeg1 + distLeg2;
 
-              // Geometric guard against circular looping
               if (totalTransferDist <= Math.max(distPickupToDest * 2.2, 7500) && distTransferToDest <= distPickupToDest + 1200) {
                 commonStops.push({
                   transferStopName: transferStop.name,
@@ -662,16 +644,13 @@ function findMatchingRoutes(pName, dName) {
             let bestTransfer = null;
 
             if (leg1.dir !== leg2.dir) {
-              // OPPOSITE DIRECTIONS: Transfer at FIRST common intersection
               commonStops.sort((a, b) => a.tIdx - b.tIdx || a.totalDist - b.totalDist);
               bestTransfer = commonStops[0];
             } else {
-              // SAME DIRECTION: Transfer at the FURTHEST shared stop along Leg 1
               commonStops.sort((a, b) => b.tIdx - a.tIdx || a.distTransferToDest - b.distTransferToDest);
               bestTransfer = commonStops[0];
             }
 
-            // Live bus detection on Leg 1
             const liveLeg1Buses = Object.values(activeBuses).filter(b => {
               const isLine = normalizeStr(b.routeKey || b.route).includes(normalizeStr(r1Key));
               if (!isLine || b.busDir !== leg1.dir) return false;
@@ -679,7 +658,6 @@ function findMatchingRoutes(pName, dName) {
               return bIdx <= pIdx;
             });
 
-            // Live bus detection on Leg 2
             const liveLeg2Buses = Object.values(activeBuses).filter(b => {
               const isLine = normalizeStr(b.routeKey || b.route).includes(normalizeStr(r2Key));
               if (!isLine || b.busDir !== leg2.dir) return false;
@@ -719,7 +697,6 @@ function findMatchingRoutes(pName, dName) {
     }
   }
 
-  // Prioritize live Leg 1 bus, then connecting bus, then shortest distance
   candidateTransfers.sort((a, b) => {
     const liveScoreA = (a.hasLiveLeg1 ? 2 : 0) + (a.hasLiveLeg2 ? 1 : 0);
     const liveScoreB = (b.hasLiveLeg1 ? 2 : 0) + (b.hasLiveLeg2 ? 1 : 0);
@@ -743,13 +720,11 @@ function handleSearchClick() {
   busNearestStopIdx = 0;
   selectedBusPlate = null;
 
-  // 1. Direct Routes Take Absolute Precedence
   if (lastSearchResult.direct.length > 0) {
     selectDirectOption(0, false);
     return;
   }
 
-  // 2. Optimized 1-Transfer
   if (lastSearchResult.transfers.length > 0) {
     selectTransferOption(0, false);
     return;
@@ -948,9 +923,6 @@ function cancelTracking() {
   updateAvailableBusesList();
 }
 
-// ==========================================
-// 5. SCHEDULE PREVIEW (FALLBACK WHEN NO LIVE GPS)
-// ==========================================
 function renderSchedulePreview() {
   const tbody = document.getElementById("stopsTableBody");
   tbody.innerHTML = "";
@@ -1039,9 +1011,6 @@ function renderSchedulePreview() {
   scrollTableToActiveRow();
 }
 
-// ==========================================
-// 6. DUAL-COLOR TRANSFER & ACCURATE APPROACH ENGINE
-// ==========================================
 function renderRoutePins(autoFit = false) {
   if (routePolylineLayer) { map.removeLayer(routePolylineLayer); routePolylineLayer = null; }
   if (approachPolylineLayer) { map.removeLayer(approachPolylineLayer); approachPolylineLayer = null; }
@@ -1053,9 +1022,6 @@ function renderRoutePins(autoFit = false) {
 
   const activeBus = (selectedBusPlate && activeBuses[selectedBusPlate]) ? activeBuses[selectedBusPlate] : null;
 
-  // ====================================================
-  // 1-TRANSFER MULTI-COLOR RENDERING
-  // ====================================================
   if (currentTripPlanType === "TRANSFER" && activeTransferPlan) {
     const pIdx = activeTransferPlan.leg1.pIdx;
     const tIdx = activeTransferPlan.leg1.tIdx;
@@ -1064,7 +1030,6 @@ function renderRoutePins(autoFit = false) {
 
     let approachPoints = [];
 
-    // Approach Path: Connect ONLY between the active GPS bus and boarding stop
     if (activeBus) {
       const busCurrentIdx = findBusNearestStopIndex(activeBus.lat, activeBus.lng, activeTransferPlan.leg1.stops);
       if (busCurrentIdx < pIdx) {
@@ -1081,7 +1046,6 @@ function renderRoutePins(autoFit = false) {
       }
     }
 
-    // Leg 1: Boarding Point -> Transfer Stop (Solid Emerald Green)
     const leg1Stops = activeTransferPlan.leg1.stops.slice(pIdx, tIdx + 1);
     const leg1Points = leg1Stops.map(s => [s.lat, s.lng]);
     leg1PolylineLayer = L.polyline(leg1Points, {
@@ -1090,7 +1054,6 @@ function renderRoutePins(autoFit = false) {
       opacity: 0.95
     }).addTo(map);
 
-    // Leg 2: Transfer Stop -> Destination (Solid Indigo Blue)
     const leg2Stops = activeTransferPlan.leg2.stops.slice(t2Idx, d2Idx + 1);
     const leg2Points = leg2Stops.map(s => [s.lat, s.lng]);
     leg2PolylineLayer = L.polyline(leg2Points, {
@@ -1099,7 +1062,6 @@ function renderRoutePins(autoFit = false) {
       opacity: 0.95
     }).addTo(map);
 
-    // AutoFit Bounds
     if (autoFit) {
       const allPoints = [...approachPoints, ...leg1Points, ...leg2Points];
       if (allPoints.length >= 2) {
@@ -1107,7 +1069,6 @@ function renderRoutePins(autoFit = false) {
       }
     }
 
-    // Stop Markers
     L.marker([selectedPickupStop.lat, selectedPickupStop.lng], { icon: createPinIcon("pickup") })
       .bindPopup(`🟢 <b>Board Bus 1:</b> ${selectedPickupStop.name}`)
       .addTo(stopMarkersLayer);
@@ -1133,9 +1094,6 @@ function renderRoutePins(autoFit = false) {
     return;
   }
 
-  // ====================================================
-  // DIRECT ROUTE RENDERING
-  // ====================================================
   const pIdx = currentStopsList.findIndex(s => normalizeStr(s.name) === normalizeStr(selectedPickupStop.name));
   const dIdx = currentStopsList.findIndex(s => normalizeStr(s.name) === normalizeStr(selectedDestStop.name));
 
@@ -1143,7 +1101,6 @@ function renderRoutePins(autoFit = false) {
 
   let approachPoints = [];
 
-  // Approach Path: Connect ONLY between the active GPS bus and boarding stop
   if (activeBus) {
     const busCurrentIdx = findBusNearestStopIndex(activeBus.lat, activeBus.lng, currentStopsList);
     if (busCurrentIdx < pIdx) {
@@ -1160,7 +1117,6 @@ function renderRoutePins(autoFit = false) {
     }
   }
 
-  // In-Ride Path (Solid Emerald Green)
   const rideStops = currentStopsList.slice(pIdx, dIdx + 1);
   const ridePoints = rideStops.map(s => [s.lat, s.lng]);
   routePolylineLayer = L.polyline(ridePoints, {
@@ -1176,7 +1132,6 @@ function renderRoutePins(autoFit = false) {
     }
   }
 
-  // Stop Markers
   const busCurrentIdx = activeBus ? findBusNearestStopIndex(activeBus.lat, activeBus.lng, currentStopsList) : pIdx;
   const startSpanIdx = (busCurrentIdx < pIdx) ? busCurrentIdx : pIdx;
   const tripSegmentStops = currentStopsList.slice(startSpanIdx, dIdx + 1);
@@ -1203,18 +1158,12 @@ function renderRoutePins(autoFit = false) {
   });
 }
 
-// ==========================================
-// 7. COMPACT BUS CARDS (MULTI-TRANSFER OPTIONS RENDERED)
-// ==========================================
 function updateAvailableBusesList() {
   const container = document.getElementById("busesListContainer");
   const floatingCard = document.getElementById("floatingBusCard");
   if (!container) return;
   container.innerHTML = "";
 
-  // ====================================================
-  // 1. IF CURRENT PLAN IS A 1-TRANSFER ROUTE
-  // ====================================================
   if (currentTripPlanType === "TRANSFER" && activeTransferPlan) {
     const transferOptions = (lastSearchResult && lastSearchResult.transfers) ? lastSearchResult.transfers : [activeTransferPlan];
 
@@ -1278,7 +1227,6 @@ function updateAvailableBusesList() {
       };
 
       card.innerHTML = `
-        <!-- Top Row -->
         <div class="flex items-center justify-between pb-2 border-b border-slate-100">
           <div>
             ${planIdx === 0 ? `
@@ -1295,7 +1243,6 @@ function updateAvailableBusesList() {
           </span>
         </div>
 
-        <!-- Middle Row -->
         <div class="mt-2.5">
           <div class="flex items-baseline justify-between gap-2">
             <div class="text-lg font-black text-blue-600 tracking-tight flex items-center gap-1.5 flex-wrap">
@@ -1321,7 +1268,6 @@ function updateAvailableBusesList() {
           </div>
         </div>
 
-        <!-- Bottom Metadata Row -->
         <div class="flex items-center justify-between text-[11px] font-medium text-slate-500 mt-2.5 pt-2 border-t border-slate-100">
           <span class="font-mono font-bold text-slate-700">${liveBus ? liveBus.plate : 'Timetable'}</span>
           <span class="flex items-center gap-1">
@@ -1332,7 +1278,6 @@ function updateAvailableBusesList() {
           </span>
         </div>
 
-        <!-- Track Button -->
         <div class="mt-3">
           <button onclick="event.stopPropagation(); selectTransferOption(${planIdx}, false); startTracking();" class="w-full bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white font-bold text-xs py-2 px-4 rounded-xl shadow-md shadow-blue-500/20 flex items-center justify-center gap-2 transition-all">
             <i data-lucide="map-pin" class="w-3.5 h-3.5"></i>
@@ -1348,9 +1293,6 @@ function updateAvailableBusesList() {
     return;
   }
 
-  // ====================================================
-  // 2. DIRECT ROUTE BUS CARDS
-  // ====================================================
   const effectiveStops = currentStopsList;
   let userPickupIdx = selectedPickupStop ? effectiveStops.findIndex(s => normalizeStr(s.name) === normalizeStr(selectedPickupStop.name)) : -1;
   let userDestIdx = selectedDestStop ? effectiveStops.findIndex(s => normalizeStr(s.name) === normalizeStr(selectedDestStop.name)) : -1;
@@ -1371,7 +1313,6 @@ function updateAvailableBusesList() {
     const busCurrentIdx = findBusNearestStopIndex(bus.lat, bus.lng, effectiveStops);
     const busLocName = effectiveStops[busCurrentIdx]?.name || "En Route";
 
-    // Strict Filter: Bus MUST be behind pickup stop
     if (userPickupIdx !== -1 && busCurrentIdx > userPickupIdx) return;
     if (userDestIdx !== -1 && busCurrentIdx >= userDestIdx) return;
 
@@ -1424,7 +1365,6 @@ function updateAvailableBusesList() {
       card.onclick = () => selectBus(item.plate);
 
       card.innerHTML = `
-        <!-- Top Row -->
         <div class="flex items-center justify-between pb-2 border-b border-slate-100">
           <div>
             ${isBest ? `
@@ -1441,7 +1381,6 @@ function updateAvailableBusesList() {
           </span>
         </div>
 
-        <!-- Middle Row: Route Name & Direct Pickup ➔ Dest & ETA -->
         <div class="flex items-center justify-between mt-2.5 gap-2">
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2">
@@ -1463,7 +1402,6 @@ function updateAvailableBusesList() {
           </div>
         </div>
 
-        <!-- Bottom Info: Plate, Radio, Cardinal Direction -->
         <div class="flex items-center justify-between text-[11px] font-medium text-slate-500 mt-2.5 pt-2 border-t border-slate-100">
           <span class="font-mono font-bold text-slate-700">${item.bus.plate}</span>
           <span class="flex items-center gap-1 text-slate-500">
@@ -1474,7 +1412,6 @@ function updateAvailableBusesList() {
           </span>
         </div>
 
-        <!-- Track Button -->
         <div class="mt-3">
           <button onclick="event.stopPropagation(); selectBus('${item.plate}'); startTracking();" class="w-full bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white font-bold text-xs py-2 px-4 rounded-xl shadow-md shadow-blue-500/20 flex items-center justify-center gap-2 transition-all">
             <i data-lucide="map-pin" class="w-3.5 h-3.5"></i>
@@ -1532,9 +1469,6 @@ function selectBus(plate) {
   }
 }
 
-// ==========================================
-// 8. STOP TIMELINE TABLE (LIVE IN PREVIEW & TRACKING)
-// ==========================================
 function updateStopsTable(busLat, busLng, currentSpeedKmph) {
   if (!selectedPickupStop || !selectedDestStop) return;
 
@@ -1543,7 +1477,6 @@ function updateStopsTable(busLat, busLng, currentSpeedKmph) {
     return;
   }
 
-  // 1-Transfer Live Tracking Table
   if (currentTripPlanType === "TRANSFER" && activeTransferPlan) {
     const tbody = document.getElementById("stopsTableBody");
     tbody.innerHTML = "";
@@ -1672,7 +1605,6 @@ function updateStopsTable(busLat, busLng, currentSpeedKmph) {
     return;
   }
 
-  // Direct Route Live Tracking Table
   const tbody = document.getElementById("stopsTableBody");
   tbody.innerHTML = "";
 
@@ -1784,35 +1716,36 @@ function recenterMap() {
 }
 
 // ==========================================
-// 9. THINGSPEAK TELEMETRY POLLER (OFFICIAL REST ENDPOINT)
+// 9. HIGH-SCALE FLEET MQTT INGESTION (WEBSOCKETS)
 // ==========================================
 updateAvailableBusesList();
 
-async function pollThingSpeakTelemetry() {
+// Connect over secure WebSocket port 8884
+const client = mqtt.connect('wss://broker.hivemq.com:8884/mqtt', {
+  clientId: 'WebClient_' + Math.random().toString(16).substr(2, 8),
+  keepalive: 60,
+  clean: true
+});
+
+client.on('connect', () => {
+  console.log('Connected to HiveMQ Unified Fleet WebSocket Hub');
+  // Wildcard subscription captures every active bus on the fleet topic
+  client.subscribe('citytransit/fleet/#', (err) => {
+    if (err) console.error('Subscription error:', err);
+  });
+});
+
+client.on('message', (topic, message) => {
   try {
-    const channelId = "3473806";
-    const readKey = "XZG3OYKRSOR5BRZK";
-    const url = `https://api.thingspeak.com/channels/${channelId}/feeds.json?api_key=${readKey}&results=1`;
-    
-    const res = await fetch(url);
-    if (!res.ok) {
-      console.warn(`ThingSpeak HTTP Error: ${res.status}`);
-      return;
-    }
+    const d = JSON.parse(message.toString());
+    if (!d || !d.lat || !d.lng || !window.ROUTES_DATABASE) return;
 
-    const data = await res.json();
-    if (!data || !data.feeds || data.feeds.length === 0) return;
-    if (!window.ROUTES_DATABASE) return;
-
-    const d = data.feeds[data.feeds.length - 1]; // Get latest feed entry
-    if (!d || !d.field1 || !d.field2) return;
-
-    const busPlate = d.field6 || "WB42U2676";
-    const rawRouteName = d.field5 || "77A_NOBATA";
-    const busLat = parseFloat(d.field1);
-    const busLng = parseFloat(d.field2);
-    const busSpeed = parseFloat(d.field3 || 0);
-    const busHeading = parseFloat(d.field4 || 0);
+    const busPlate = d.bus_no || "WB42U2676";
+    const rawRouteName = d.route || "77A_NOBATA";
+    const busLat = parseFloat(d.lat);
+    const busLng = parseFloat(d.lng);
+    const busSpeed = parseFloat(d.spd || 0);
+    const busHeading = parseFloat(d.heading || 0);
 
     let resolvedRouteKey = Object.keys(window.ROUTES_DATABASE).find(
       key => normalizeStr(key) === normalizeStr(rawRouteName)
@@ -1864,18 +1797,15 @@ async function pollThingSpeakTelemetry() {
       updateAvailableBusesList();
     }
   } catch (e) {
-    console.error("ThingSpeak fetch error:", e);
+    console.error('Fleet MQTT parse error:', e);
   }
-}
+});
 
-// Poll immediately on load, then repeat every 10 seconds
-pollThingSpeakTelemetry();
-setInterval(pollThingSpeakTelemetry, 10000);
-
+// Purge offline buses after 40 seconds of silence
 setInterval(() => {
   const now = Date.now();
   for (const [plate, bus] of Object.entries(activeBuses)) {
-    if (now - bus.lastSeen > 30000) {
+    if (now - bus.lastSeen > 40000) {
       if (activeBusMarkers[plate]) {
         map.removeLayer(activeBusMarkers[plate]);
         delete activeBusMarkers[plate];
@@ -1891,4 +1821,4 @@ setInterval(() => {
       updateAvailableBusesList();
     }
   }
-}, 10000);
+}, 5000);
