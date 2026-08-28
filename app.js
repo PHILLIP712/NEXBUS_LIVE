@@ -1789,7 +1789,7 @@ function recenterMap() {
 }
 
 // ==========================================
-// 9. THINGSPEAK TELEMETRY POLLER (WITH READ API KEY)
+// 9. THINGSPEAK TELEMETRY POLLER (WITH READ API KEY & SAFETY CHECKS)
 // ==========================================
 updateAvailableBusesList();
 
@@ -1801,6 +1801,7 @@ setInterval(async () => {
     const d = await res.json();
 
     if (!d || !d.field1 || !d.field2) return;
+    if (!window.ROUTES_DATABASE) return;
 
     const busPlate = d.field6 || "WB42U2676";
     const rawRouteName = d.field5 || "77A_NOBATA";
@@ -1809,13 +1810,14 @@ setInterval(async () => {
     const busSpeed = parseFloat(d.field3 || 0);
     const busHeading = parseFloat(d.field4 || 0);
 
-    let resolvedRouteKey = Object.keys(window.ROUTES_DATABASE || {}).find(
+    let resolvedRouteKey = Object.keys(window.ROUTES_DATABASE).find(
       key => normalizeStr(key) === normalizeStr(rawRouteName)
-    ) || Object.keys(window.ROUTES_DATABASE || {})[0];
+    ) || Object.keys(window.ROUTES_DATABASE)[0];
 
     const routeConfig = window.ROUTES_DATABASE[resolvedRouteKey];
+    if (!routeConfig) return;
 
-    if (!activeRouteKey && routeConfig) {
+    if (!activeRouteKey) {
       activeRouteKey = resolvedRouteKey;
       currentStopsList = routeConfig.forwardStops;
       updateDirectionBannerText();
