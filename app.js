@@ -1789,24 +1789,25 @@ function recenterMap() {
 }
 
 // ==========================================
-// 9. THINGSPEAK TELEMETRY POLLER
+// 9. MQTT TELEMETRY
 // ==========================================
 updateAvailableBusesList();
 
-setInterval(async () => {
+const client = mqtt.connect('wss://broker.hivemq.com:8884/mqtt');
+
+client.on('connect', () => {
+  const badge = document.getElementById('connBadge');
+  badge.className = "px-2.5 py-1 rounded-full font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-sm flex items-center gap-1";
+  badge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span><span>Live Connected</span>`;
+  client.subscribe("citytransit/+/+/data");
+});
+
+client.on('message', (topic, message) => {
   try {
-    const channelId = "3473806";
-    const res = await fetch(`https://api.thingspeak.com/channels/${channelId}/feeds/last.json`);
-    const d = await res.json();
-
-    if (!d || !d.field1 || !d.field2) return;
-
-    const busPlate = d.field6 || "WB42U2676";
-    const rawRouteName = d.field5 || "77A_NOBATA";
-    const busLat = parseFloat(d.field1);
-    const busLng = parseFloat(d.field2);
-    const busSpeed = parseFloat(d.field3 || 0);
-    const busHeading = parseFloat(d.field4 || 0);
+    const d = JSON.parse(message.toString());
+    const busPlate = d.bus_no || "UNKNOWN";
+    const rawRouteName = d.route || "77A_NOBATA";
+    const busSpeed = parseFloat(d.spd || 0);
 
     let resolvedRouteKey = Object.keys(window.ROUTES_DATABASE || {}).find(
       key => normalizeStr(key) === normalizeStr(rawRouteName)
@@ -1820,17 +1821,17 @@ setInterval(async () => {
       updateDirectionBannerText();
     }
 
-    const detectedDir = updateBusDirectionFromMovement(busPlate, busLat, busLng, busHeading, busSpeed, "UP", routeConfig);
+    const detectedDir = updateBusDirectionFromMovement(busPlate, d.lat, d.lng, d.heading, busSpeed, d.dir, routeConfig);
 
     activeBuses[busPlate] = {
       plate: busPlate,
       routeKey: resolvedRouteKey,
       route: routeConfig.name,
       subTitle: routeConfig.subTitle,
-      lat: busLat,
-      lng: busLng,
+      lat: d.lat,
+      lng: d.lng,
       spd: busSpeed,
-      heading: busHeading,
+      heading: d.heading,
       busDir: detectedDir,
       lastSeen: Date.now()
     };
@@ -1838,7 +1839,8 @@ setInterval(async () => {
     const parts = (routeConfig.subTitle || "").split(/<->|↔|->|-/).map(s => s.trim()).filter(Boolean);
     const destTerminal = (detectedDir === "DOWN") ? (parts[0] || "Down") : (parts[1] || "Up");
 
-    const pos = [busLat, busLng];
+    const pos = [d.lat, d.lng];
+    const busHeading = d.heading !== undefined ? d.heading : (detectedDir === "UP" ? 45 : 225);
 
     if (!activeBusMarkers[busPlate]) {
       activeBusMarkers[busPlate] = L.marker(pos, {
@@ -1852,14 +1854,14 @@ setInterval(async () => {
     breadcrumbLines[busPlate].addLatLng(pos);
 
     if (busPlate === selectedBusPlate) {
-      updateStopsTable(busLat, busLng, busSpeed);
+      updateStopsTable(d.lat, d.lng, busSpeed);
     } else {
       updateAvailableBusesList();
     }
   } catch (e) {
-    console.error("ThingSpeak fetch error:", e);
+    console.error("Telemetry Payload error:", e);
   }
-}, 10000);
+});
 
 setInterval(() => {
   const now = Date.now();
@@ -1881,3 +1883,9 @@ setInterval(() => {
     }
   }
 }, 10000);
+
+client.on('offline', () => {
+  const badge = document.getElementById('connBadge');
+  badge.className = "px-2.5 py-1 rounded-full font-bold bg-rose-50 text-rose-700 border border-rose-200 shadow-sm flex items-center gap-1";
+  badge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span><span>Reconnecting...</span>`;
+});
