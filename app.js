@@ -592,7 +592,7 @@ function findMatchingRoutes(pName, dName) {
     }
   }
 
-  // 2. Strict Non-Backtracking 1-Transfer Check (Same Direction Only)
+  // 2. Comprehensive 1-Transfer Check (Handles Corridors, Loops & Feeder Branches)
   for (const r1Key of allRouteKeys) {
     const r1 = window.ROUTES_DATABASE[r1Key];
     const directions1 = [
@@ -606,7 +606,7 @@ function findMatchingRoutes(pName, dName) {
 
       const pStop = leg1.stops[pIdx];
 
-      // If this route itself goes to the destination directly, skip transfer loop
+      // Skip transfer if this route goes to the destination directly
       const directDestIdx = leg1.stops.findIndex(s => normalizeStr(s.name).includes(dNorm) || (s.area && normalizeStr(s.area).includes(dNorm)));
       if (directDestIdx !== -1 && directDestIdx > pIdx) continue;
 
@@ -623,22 +623,24 @@ function findMatchingRoutes(pName, dName) {
           ];
 
           for (const leg2 of directions2) {
-            // STRICT RULE: Both legs MUST travel in the exact same direction
-            if (leg1.dir !== leg2.dir) continue;
-
             const t2Idx = leg2.stops.findIndex(s => normalizeStr(s.name).includes(tNorm) || (s.area && normalizeStr(s.area).includes(tNorm)));
             const d2Idx = leg2.stops.findIndex(s => normalizeStr(s.name).includes(dNorm) || (s.area && normalizeStr(s.area).includes(dNorm)));
 
+            // Leg 2 must move forward from transfer point to destination
             if (t2Idx !== -1 && d2Idx !== -1 && t2Idx < d2Idx) {
               const dStop = leg2.stops[d2Idx];
 
               const distPickupToDest = getDistanceMeters(pStop.lat, pStop.lng, dStop.lat, dStop.lng);
-              const distTransferToDest = getDistanceMeters(transferStop.lat, transferStop.lng, dStop.lat, dStop.lng);
+              const distLeg1 = getDistanceMeters(pStop.lat, pStop.lng, transferStop.lat, transferStop.lng);
+              const distLeg2 = getDistanceMeters(transferStop.lat, transferStop.lng, dStop.lat, dStop.lng);
+              const totalTransferDist = distLeg1 + distLeg2;
 
-              if (distTransferToDest < distPickupToDest * 0.9) {
+              // Check that transfer path does not deviate excessively (>2.5x direct displacement)
+              if (totalTransferDist <= Math.max(distPickupToDest * 2.5, 8000)) {
                 transferMatches.push({
                   type: 'TRANSFER',
                   transferStopName: transferStop.name,
+                  totalDist: totalTransferDist,
                   leg1: {
                     routeKey: r1Key,
                     direction: leg1.dir,
@@ -666,7 +668,8 @@ function findMatchingRoutes(pName, dName) {
     }
   }
 
-  transferMatches.sort((a, b) => (b.leg1.tIdx - b.leg1.pIdx) - (a.leg1.tIdx - a.leg1.pIdx));
+  // Sort by shortest total transfer travel distance
+  transferMatches.sort((a, b) => (a.totalDist || 0) - (b.totalDist || 0));
 
   return { direct: directMatches, transfers: transferMatches };
 }
@@ -685,29 +688,33 @@ function handleSearchClick() {
   busNearestStopIdx = 0;
   selectedBusPlate = null;
 
-  // Check if live buses exist on direct routes
+  // Check if upcoming live buses exist on direct routes (bus is behind the pickup stop)
   const hasLiveDirectBuses = (lastSearchResult.direct || []).some(dirRoute => {
     return Object.values(activeBuses).some(b => {
       const isLine = normalizeStr(b.routeKey || b.route).includes(normalizeStr(dirRoute.routeKey));
-      return isLine && (b.busDir === dirRoute.direction);
+      if (!isLine || b.busDir !== dirRoute.direction) return false;
+      const busCurrentIdx = findBusNearestStopIndex(b.lat, b.lng, dirRoute.stops);
+      return busCurrentIdx <= dirRoute.pIdx;
     });
   });
 
-  // Check if live buses exist on 1-transfer routes
+  // Check if upcoming live buses exist on 1-transfer routes (bus is behind the leg1 pickup stop)
   const hasLiveTransferBuses = (lastSearchResult.transfers || []).some(trPlan => {
     return Object.values(activeBuses).some(b => {
       const isLine = normalizeStr(b.routeKey || b.route).includes(normalizeStr(trPlan.leg1.routeKey));
-      return isLine && (b.busDir === trPlan.leg1.direction);
+      if (!isLine || b.busDir !== trPlan.leg1.direction) return false;
+      const busCurrentIdx = findBusNearestStopIndex(b.lat, b.lng, trPlan.leg1.stops);
+      return busCurrentIdx <= trPlan.leg1.pIdx;
     });
   });
 
-  // 1. If direct routes have live buses, choose Direct
+  // 1. If direct routes have upcoming live buses, choose Direct
   if (lastSearchResult.direct.length > 0 && hasLiveDirectBuses) {
     selectDirectOption(0, false);
     return;
   }
 
-  // 2. If no direct live bus exists but a live transfer bus is available, choose Transfer
+  // 2. If no direct upcoming live bus exists but upcoming live transfer bus is available, choose Transfer
   if (!hasLiveDirectBuses && hasLiveTransferBuses && lastSearchResult.transfers.length > 0) {
     selectTransferOption(0, false);
     return;
@@ -835,6 +842,20 @@ function startTracking() {
   if (!selectedPickupStop || !selectedDestStop) {
     alert("Please select your stops and click Search first!");
     return;
+  }
+
+  // Bind active upcoming bus plate for 1-Transfer routes
+  if (currentTripPlanType === "TRANSFER" && activeTransferPlan) {
+    const upcomingLeg1Buses = Object.values(activeBuses).filter(b => {
+      const isLine = normalizeStr(b.routeKey || b.route).includes(normalizeStr(activeTransferPlan.leg1.routeKey));
+      if (!isLine || b.busDir !== activeTransferPlan.leg1.direction) return false;
+      const bIdx = findBusNearestStopIndex(b.lat, b.lng, activeTransferPlan.leg1.stops);
+      return bIdx <= activeTransferPlan.leg1.pIdx;
+    });
+
+    if (upcomingLeg1Buses.length > 0) {
+      selectedBusPlate = upcomingLeg1Buses[0].plate;
+    }
   }
 
   isTrackingConfirmed = true;
@@ -965,7 +986,7 @@ function renderSchedulePreview() {
 }
 
 // ==========================================
-// 6. DUAL-COLOR TRANSFER & APPROACH MAP ENGINE
+// 6. DUAL-COLOR TRANSFER & ACCURATE APPROACH ENGINE
 // ==========================================
 function renderRoutePins(autoFit = false) {
   if (routePolylineLayer) { map.removeLayer(routePolylineLayer); routePolylineLayer = null; }
@@ -976,26 +997,37 @@ function renderRoutePins(autoFit = false) {
 
   if (!isTrackingConfirmed || !selectedPickupStop || !selectedDestStop) return;
 
-  // 1-Transfer Multi-Color Rendering
+  const activeBus = (selectedBusPlate && activeBuses[selectedBusPlate]) ? activeBuses[selectedBusPlate] : null;
+
+  // ====================================================
+  // 1-TRANSFER MULTI-COLOR RENDERING
+  // ====================================================
   if (currentTripPlanType === "TRANSFER" && activeTransferPlan) {
     const pIdx = activeTransferPlan.leg1.pIdx;
     const tIdx = activeTransferPlan.leg1.tIdx;
     const t2Idx = activeTransferPlan.leg2.tIdx;
     const d2Idx = activeTransferPlan.leg2.dIdx;
 
-    // 1. Draw Incoming Approach Path (Dashed Amber from Bus to Boarding Point)
-    if (busNearestStopIdx >= 0 && busNearestStopIdx < pIdx) {
-      const approachStops = activeTransferPlan.leg1.stops.slice(busNearestStopIdx, pIdx + 1);
-      const approachPoints = approachStops.map(s => [s.lat, s.lng]);
-      approachPolylineLayer = L.polyline(approachPoints, {
-        color: '#f59e0b',
-        weight: 4,
-        dashArray: '8, 8',
-        opacity: 0.95
-      }).addTo(map);
+    let approachPoints = [];
+
+    // Approach Path: Connect ONLY between the active GPS bus and boarding stop
+    if (activeBus) {
+      const busCurrentIdx = findBusNearestStopIndex(activeBus.lat, activeBus.lng, activeTransferPlan.leg1.stops);
+      if (busCurrentIdx < pIdx) {
+        approachPoints = [
+          [activeBus.lat, activeBus.lng],
+          ...activeTransferPlan.leg1.stops.slice(busCurrentIdx, pIdx + 1).map(s => [s.lat, s.lng])
+        ];
+        approachPolylineLayer = L.polyline(approachPoints, {
+          color: '#f59e0b',
+          weight: 4,
+          dashArray: '8, 8',
+          opacity: 0.95
+        }).addTo(map);
+      }
     }
 
-    // 2. Draw Leg 1: Boarding Point -> Transfer Stop (Solid Emerald Green)
+    // Leg 1: Boarding Point -> Transfer Stop (Solid Emerald Green)
     const leg1Stops = activeTransferPlan.leg1.stops.slice(pIdx, tIdx + 1);
     const leg1Points = leg1Stops.map(s => [s.lat, s.lng]);
     leg1PolylineLayer = L.polyline(leg1Points, {
@@ -1004,7 +1036,7 @@ function renderRoutePins(autoFit = false) {
       opacity: 0.95
     }).addTo(map);
 
-    // 3. Draw Leg 2: Transfer Stop -> Destination (Solid Indigo Blue)
+    // Leg 2: Transfer Stop -> Destination (Solid Indigo Blue)
     const leg2Stops = activeTransferPlan.leg2.stops.slice(t2Idx, d2Idx + 1);
     const leg2Points = leg2Stops.map(s => [s.lat, s.lng]);
     leg2PolylineLayer = L.polyline(leg2Points, {
@@ -1013,19 +1045,15 @@ function renderRoutePins(autoFit = false) {
       opacity: 0.95
     }).addTo(map);
 
-    // AutoFit bounds across all legs
+    // AutoFit Bounds
     if (autoFit) {
-      const allPoints = [
-        ...(busNearestStopIdx >= 0 && busNearestStopIdx < pIdx ? activeTransferPlan.leg1.stops.slice(busNearestStopIdx, pIdx).map(s => [s.lat, s.lng]) : []),
-        ...leg1Points,
-        ...leg2Points
-      ];
+      const allPoints = [...approachPoints, ...leg1Points, ...leg2Points];
       if (allPoints.length >= 2) {
         map.fitBounds(L.polyline(allPoints).getBounds(), { padding: [50, 50] });
       }
     }
 
-    // Markers
+    // Stop Markers
     L.marker([selectedPickupStop.lat, selectedPickupStop.lng], { icon: createPinIcon("pickup") })
       .bindPopup(`🟢 <b>Board Bus 1:</b> ${selectedPickupStop.name}`)
       .addTo(stopMarkersLayer);
@@ -1039,34 +1067,46 @@ function renderRoutePins(autoFit = false) {
       .bindPopup(`🔴 <b>Final Destination:</b> ${selectedDestStop.name}`)
       .addTo(stopMarkersLayer);
 
-    if (busNearestStopIdx >= 0 && busNearestStopIdx < pIdx) {
-      const busStop = activeTransferPlan.leg1.stops[busNearestStopIdx];
-      L.marker([busStop.lat, busStop.lng], { icon: createPinIcon("bus_loc") })
-        .bindPopup(`🟡 <b>Bus Current Location:</b> ${busStop.name}`)
-        .addTo(stopMarkersLayer);
+    if (activeBus) {
+      const busCurrentIdx = findBusNearestStopIndex(activeBus.lat, activeBus.lng, activeTransferPlan.leg1.stops);
+      if (busCurrentIdx < pIdx) {
+        const busStop = activeTransferPlan.leg1.stops[busCurrentIdx];
+        L.marker([busStop.lat, busStop.lng], { icon: createPinIcon("bus_loc") })
+          .bindPopup(`🟡 <b>Bus Current Location:</b> ${busStop.name}`)
+          .addTo(stopMarkersLayer);
+      }
     }
     return;
   }
 
-  // Direct Route Rendering
+  // ====================================================
+  // DIRECT ROUTE RENDERING
+  // ====================================================
   const pIdx = currentStopsList.findIndex(s => normalizeStr(s.name) === normalizeStr(selectedPickupStop.name));
   const dIdx = currentStopsList.findIndex(s => normalizeStr(s.name) === normalizeStr(selectedDestStop.name));
 
   if (pIdx === -1 || dIdx === -1 || pIdx >= dIdx) return;
 
-  // 1. Approach Path (Dashed Amber)
-  if (busNearestStopIdx >= 0 && busNearestStopIdx < pIdx) {
-    const approachStops = currentStopsList.slice(busNearestStopIdx, pIdx + 1);
-    const approachPoints = approachStops.map(s => [s.lat, s.lng]);
-    approachPolylineLayer = L.polyline(approachPoints, {
-      color: '#f59e0b',
-      weight: 4,
-      dashArray: '8, 8',
-      opacity: 0.95
-    }).addTo(map);
+  let approachPoints = [];
+
+  // Approach Path: Connect ONLY between the active GPS bus and boarding stop
+  if (activeBus) {
+    const busCurrentIdx = findBusNearestStopIndex(activeBus.lat, activeBus.lng, currentStopsList);
+    if (busCurrentIdx < pIdx) {
+      approachPoints = [
+        [activeBus.lat, activeBus.lng],
+        ...currentStopsList.slice(busCurrentIdx, pIdx + 1).map(s => [s.lat, s.lng])
+      ];
+      approachPolylineLayer = L.polyline(approachPoints, {
+        color: '#f59e0b',
+        weight: 4,
+        dashArray: '8, 8',
+        opacity: 0.95
+      }).addTo(map);
+    }
   }
 
-  // 2. In-Ride Path (Solid Emerald Green)
+  // In-Ride Path (Solid Emerald Green)
   const rideStops = currentStopsList.slice(pIdx, dIdx + 1);
   const ridePoints = rideStops.map(s => [s.lat, s.lng]);
   routePolylineLayer = L.polyline(ridePoints, {
@@ -1076,17 +1116,15 @@ function renderRoutePins(autoFit = false) {
   }).addTo(map);
 
   if (autoFit) {
-    const allVisiblePoints = (busNearestStopIdx >= 0 && busNearestStopIdx < pIdx)
-      ? currentStopsList.slice(busNearestStopIdx, dIdx + 1).map(s => [s.lat, s.lng])
-      : ridePoints;
-      
-    if (allVisiblePoints.length >= 2) {
-      map.fitBounds(L.polyline(allVisiblePoints).getBounds(), { padding: [50, 50] });
+    const allPoints = [...approachPoints, ...ridePoints];
+    if (allPoints.length >= 2) {
+      map.fitBounds(L.polyline(allPoints).getBounds(), { padding: [50, 50] });
     }
   }
 
-  // Render Stop Markers
-  const startSpanIdx = (busNearestStopIdx >= 0 && busNearestStopIdx < pIdx) ? busNearestStopIdx : pIdx;
+  // Stop Markers
+  const busCurrentIdx = activeBus ? findBusNearestStopIndex(activeBus.lat, activeBus.lng, currentStopsList) : pIdx;
+  const startSpanIdx = (busCurrentIdx < pIdx) ? busCurrentIdx : pIdx;
   const tripSegmentStops = currentStopsList.slice(startSpanIdx, dIdx + 1);
 
   tripSegmentStops.forEach((stop, index) => {
@@ -1100,7 +1138,7 @@ function renderRoutePins(autoFit = false) {
     } else if (actualIdx === dIdx) {
       type = "dest";
       label = `🔴 <b>Deboarding Stop:</b> ${stop.name}`;
-    } else if (actualIdx === busNearestStopIdx && busNearestStopIdx < pIdx) {
+    } else if (actualIdx === busCurrentIdx && busCurrentIdx < pIdx) {
       type = "bus_loc";
       label = `🟡 <b>Bus Current Location:</b> ${stop.name}`;
     }
@@ -1112,7 +1150,7 @@ function renderRoutePins(autoFit = false) {
 }
 
 // ==========================================
-// 7. COMPREHENSIVE BUS DRAWER (NEVER BLANK)
+// 7. COMPREHENSIVE BUS DRAWER (UPCOMING FILTERED)
 // ==========================================
 function updateAvailableBusesList() {
   const container = document.getElementById("busesListContainer");
@@ -1123,9 +1161,6 @@ function updateAvailableBusesList() {
   // 1. IF CURRENT PLAN IS A 1-TRANSFER ROUTE
   // ====================================================
   if (currentTripPlanType === "TRANSFER" && activeTransferPlan) {
-    floatingCard.classList.add("hidden");
-    selectedBusPlate = null;
-
     const r1Config = window.ROUTES_DATABASE[activeTransferPlan.leg1.routeKey] || {};
     const r2Config = window.ROUTES_DATABASE[activeTransferPlan.leg2.routeKey] || {};
     const r1Name = r1Config.name || "Bus 1";
@@ -1135,13 +1170,39 @@ function updateAvailableBusesList() {
     const leg2Count = activeTransferPlan.leg2.dIdx - activeTransferPlan.leg2.tIdx;
     const totalStops = leg1Count + leg2Count;
 
-    // Check if Leg 1 bus has live GPS
-    const liveLeg1Buses = Object.values(activeBuses).filter(b => {
+    // Filter ONLY buses that are UPCOMING (behind the passenger's pickup stop)
+    const upcomingLeg1Buses = Object.values(activeBuses).filter(b => {
       const isLine = normalizeStr(b.routeKey || b.route).includes(normalizeStr(activeTransferPlan.leg1.routeKey));
-      return isLine && (b.busDir === activeTransferPlan.leg1.direction);
+      if (!isLine || b.busDir !== activeTransferPlan.leg1.direction) return false;
+      const busCurrentIdx = findBusNearestStopIndex(b.lat, b.lng, activeTransferPlan.leg1.stops);
+      return busCurrentIdx <= activeTransferPlan.leg1.pIdx;
     });
 
-    const isLive = liveLeg1Buses.length > 0;
+    const isUpcomingLive = upcomingLeg1Buses.length > 0;
+    const liveBusObj = isUpcomingLive ? upcomingLeg1Buses[0] : null;
+
+    if (isUpcomingLive && (!selectedBusPlate || !upcomingLeg1Buses.some(b => b.plate === selectedBusPlate))) {
+      selectedBusPlate = upcomingLeg1Buses[0].plate;
+    }
+
+    if (isTrackingConfirmed && liveBusObj) {
+      floatingCard.classList.remove("hidden");
+      const busCurrentIdx = findBusNearestStopIndex(liveBusObj.lat, liveBusObj.lng, activeTransferPlan.leg1.stops);
+      const busLocName = activeTransferPlan.leg1.stops[busCurrentIdx]?.name || "En Route";
+
+      document.getElementById('floatBusPlate').innerHTML = `
+        <div class="flex items-center gap-1.5 flex-nowrap">
+          <span class="font-bold text-slate-900">${liveBusObj.plate}</span>
+          <span class="text-[10px] font-extrabold text-amber-800 bg-amber-100/90 px-2 py-0.5 rounded border border-amber-200 whitespace-nowrap flex items-center gap-1">
+            <span>➔</span>
+            <span>1-Transfer</span>
+          </span>
+        </div>
+      `;
+      document.getElementById('floatTelemetry').innerText = `Near: ${busLocName} • Speed: ${liveBusObj.spd.toFixed(1)} km/h`;
+    } else {
+      floatingCard.classList.add("hidden");
+    }
 
     const transferSummaryCard = document.createElement("div");
     transferSummaryCard.className = "p-3.5 rounded-2xl border-2 border-amber-300 bg-amber-50/80 shadow-sm space-y-2.5";
@@ -1151,7 +1212,7 @@ function updateAvailableBusesList() {
         <span class="px-2 py-0.5 rounded-md text-[10px] font-black bg-amber-500 text-white tracking-wider uppercase">
           1-Transfer Route
         </span>
-        ${isLive 
+        ${isUpcomingLive 
           ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200 flex items-center gap-1">
                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>Live Bus 1
              </span>`
@@ -1189,7 +1250,7 @@ function updateAvailableBusesList() {
 
     container.appendChild(transferSummaryCard);
 
-    // If direct alternative exists, show it below
+    // Switch to Direct Alternative
     if (lastSearchResult && (lastSearchResult.direct || []).length > 0) {
       lastSearchResult.direct.forEach((dirRoute, dIdx) => {
         const dConfig = window.ROUTES_DATABASE[dirRoute.routeKey];
@@ -1241,6 +1302,7 @@ function updateAvailableBusesList() {
     const busCurrentIdx = findBusNearestStopIndex(bus.lat, bus.lng, effectiveStops);
     const busLocName = effectiveStops[busCurrentIdx]?.name || "En Route";
 
+    // Strict Filter: Bus MUST be behind pickup stop
     if (userPickupIdx !== -1 && busCurrentIdx > userPickupIdx) return;
     if (userDestIdx !== -1 && busCurrentIdx >= userDestIdx) return;
 
@@ -1327,7 +1389,7 @@ function updateAvailableBusesList() {
     floatingCard.classList.add("hidden");
     selectedBusPlate = null;
 
-    // Guaranteed Scheduled Corridor Cards
+    // Scheduled Corridor Cards for Direct Line
     const corridorRoutes = (activeMatchingRoutes.length > 0) ? activeMatchingRoutes : (lastSearchResult?.direct || []);
 
     corridorRoutes.forEach(r => {
