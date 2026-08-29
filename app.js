@@ -30,17 +30,15 @@ const activeBuses = {};
 const activeBusMarkers = {};
 let selectedBusPlate = null;
 
-// Fuzzy stop matcher that tolerates name variations (e.g. "Dharmatala" vs "Dharmatala Bus Stand")
+// Fuzzy stop matcher that tolerates name variations
 function findStopIndexInList(stops, targetStop) {
   if (!stops || !targetStop) return -1;
   const targetNorm = normalizeStr(typeof targetStop === 'string' ? targetStop : targetStop.name);
   if (!targetNorm) return -1;
 
-  // 1. Exact normalized match
   let idx = stops.findIndex(s => normalizeStr(s.name) === targetNorm);
   if (idx !== -1) return idx;
 
-  // 2. Substring match (either direction)
   idx = stops.findIndex(s => {
     const sNorm = normalizeStr(s.name);
     return sNorm.includes(targetNorm) || targetNorm.includes(sNorm) || (s.area && normalizeStr(s.area).includes(targetNorm));
@@ -230,22 +228,21 @@ function calculateEtaSeconds(busLat, busLng, busSpeedKmph, targetStopIdx, stops)
   const busIdx = findBusNearestStopIndex(busLat, busLng, stops);
   if (busIdx > targetStopIdx) return Infinity;
 
-  const ROAD_CURVATURE = 1.25;
-  const DWELL_SEC = 30;
-  const effectiveSpeed = busSpeedKmph >= 12 ? (busSpeedKmph * 0.7 + 20 * 0.3) : 20.0;
+  const DWELL_SEC = 20;
+  const effectiveSpeed = (busSpeedKmph >= 3.0) ? busSpeedKmph : 20.0;
   const speedMps = (effectiveSpeed * 1000) / 3600;
 
   if (busIdx === targetStopIdx) {
     const direct = getDistanceMeters(busLat, busLng, stops[targetStopIdx].lat, stops[targetStopIdx].lng);
-    return Math.max(30, (direct * ROAD_CURVATURE) / speedMps);
+    return Math.max(20, (direct * 1.18) / speedMps);
   }
 
-  let accDist = getDistanceMeters(busLat, busLng, stops[busIdx].lat, stops[busIdx].lng) * ROAD_CURVATURE;
+  let accDist = getDistanceMeters(busLat, busLng, stops[busIdx].lat, stops[busIdx].lng) * 1.18;
   let intermediateStops = 0;
 
   for (let i = busIdx + 1; i <= targetStopIdx; i++) {
     const prev = stops[i - 1];
-    accDist += getDistanceMeters(prev.lat, prev.lng, stops[i].lat, stops[i].lng) * ROAD_CURVATURE;
+    accDist += getDistanceMeters(prev.lat, prev.lng, stops[i].lat, stops[i].lng) * 1.18;
     intermediateStops++;
   }
 
@@ -257,23 +254,21 @@ function calculateAccurateBusToStopDistance(busLat, busLng, targetStopIdx, stops
   const busIdx = findBusNearestStopIndex(busLat, busLng, stops);
   if (busIdx > targetStopIdx) return 0;
 
-  const ROAD_CURVATURE = 1.25;
-  let accDist = getDistanceMeters(busLat, busLng, stops[busIdx].lat, stops[busIdx].lng) * ROAD_CURVATURE;
+  let accDist = getDistanceMeters(busLat, busLng, stops[busIdx].lat, stops[busIdx].lng) * 1.18;
   for (let i = busIdx + 1; i <= targetStopIdx; i++) {
     const prev = stops[i - 1];
-    accDist += getDistanceMeters(prev.lat, prev.lng, stops[i].lat, stops[i].lng) * ROAD_CURVATURE;
+    accDist += getDistanceMeters(prev.lat, prev.lng, stops[i].lat, stops[i].lng) * 1.18;
   }
   return accDist;
 }
 
-function calculateTripSummary(pickupStop, destStop, stopsList, effectiveSpeedKmph = 22.0) {
+function calculateTripSummary(pickupStop, destStop, stopsList, effectiveSpeedKmph = 20.0) {
   const pIdx = findStopIndexInList(stopsList, pickupStop);
   const dIdx = findStopIndexInList(stopsList, destStop);
   
   if (pIdx === -1 || dIdx === -1 || pIdx >= dIdx) return null;
 
-  const ROAD_CURVATURE = 1.25;
-  const DWELL_SEC = 30;
+  const DWELL_SEC = 20;
   const speedMps = (effectiveSpeedKmph * 1000) / 3600;
 
   let totalMeters = 0;
@@ -282,14 +277,17 @@ function calculateTripSummary(pickupStop, destStop, stopsList, effectiveSpeedKmp
   for (let i = pIdx + 1; i <= dIdx; i++) {
     const prev = stopsList[i - 1];
     const curr = stopsList[i];
-    totalMeters += getDistanceMeters(prev.lat, prev.lng, curr.lat, curr.lng) * ROAD_CURVATURE;
+    const segmentDist = getDistanceMeters(prev.lat, prev.lng, curr.lat, curr.lng);
+    totalMeters += segmentDist * 1.18;
     intermediateStops++;
   }
 
   const inRideSec = (totalMeters / speedMps) + (intermediateStops * DWELL_SEC);
 
   return {
+    distanceMeters: totalMeters,
     distanceKm: (totalMeters / 1000).toFixed(1),
+    rideDurationSec: inRideSec,
     rideDuration: formatEtaTime(inRideSec),
     totalStops: intermediateStops + 1
   };
@@ -961,10 +959,12 @@ function updateTripSummaryUI() {
 
     const s1 = calculateTripSummary(activeTransferPlan.leg1.pickupStop, activeTransferPlan.leg1.transferStop, activeTransferPlan.leg1.stops);
     const s2 = calculateTripSummary(activeTransferPlan.leg2.transferStop, activeTransferPlan.leg2.destStop, activeTransferPlan.leg2.stops);
-    const totalDist = ((parseFloat(s1?.distanceKm || 0)) + (parseFloat(s2?.distanceKm || 0))).toFixed(1);
+    
+    const totalDist = (((s1?.distanceMeters || 0) + (s2?.distanceMeters || 0)) / 1000).toFixed(1);
+    const totalDurationSec = (s1?.rideDurationSec || 0) + (s2?.rideDurationSec || 0) + (5 * 60);
 
     document.getElementById("tripDistText").innerText = `${totalDist} km`;
-    document.getElementById("tripDurationText").innerText = `~${Math.round(totalDist * 2.8)} mins`;
+    document.getElementById("tripDurationText").innerText = `~${formatEtaTime(totalDurationSec)}`;
     document.getElementById("tripStatsPill").classList.remove("hidden");
     document.getElementById("journeyStopsCount").innerText = `(${totalStops} stops, 1 Transfer)`;
     return;
@@ -1720,7 +1720,6 @@ function selectBus(plate) {
   selectedBusPlate = plate;
   const bus = activeBuses[plate];
   
-  // Synchronize route database and direction with selected bus
   if (bus && window.ROUTES_DATABASE && window.ROUTES_DATABASE[bus.routeKey]) {
     const rConfig = window.ROUTES_DATABASE[bus.routeKey];
     activeRouteKey = bus.routeKey;
@@ -1775,7 +1774,6 @@ function updateStopsTable(busLat, busLng, currentSpeedKmph) {
 
     let rideStepNum = 1;
     let accRideDist = 0;
-    const ROAD_CURVATURE = 1.25;
 
     leg1Stops.forEach((stop, idx) => {
       const actualStopIdx = startSpanIdx + idx;
@@ -1799,7 +1797,7 @@ function updateStopsTable(busLat, busLng, currentSpeedKmph) {
         displayStepNum = `${rideStepNum++}`;
         const prevIdx = Math.max(0, actualStopIdx - 1);
         const prev = activeTransferPlan.leg1.stops[prevIdx] || stop;
-        accRideDist += getDistanceMeters(prev.lat, prev.lng, stop.lat, stop.lng) * ROAD_CURVATURE;
+        accRideDist += getDistanceMeters(prev.lat, prev.lng, stop.lat, stop.lng) * 1.18;
         distLabel = `+${(accRideDist / 1000).toFixed(1)} km`;
       }
 
@@ -1905,7 +1903,6 @@ function updateStopsTable(busLat, busLng, currentSpeedKmph) {
   const startSpanIdx = Math.min(busAbsoluteIdx, pIdx);
   const journeyStops = currentStopsList.slice(startSpanIdx, dIdx + 1);
 
-  const ROAD_CURVATURE = 1.25;
   let accRideDist = 0;
   let rideStepNum = 1;
 
@@ -1931,7 +1928,7 @@ function updateStopsTable(busLat, busLng, currentSpeedKmph) {
       displayStepNum = `${rideStepNum++}`;
       const prevIdx = Math.max(0, actualStopIdx - 1);
       const prev = currentStopsList[prevIdx] || stop;
-      accRideDist += getDistanceMeters(prev.lat, prev.lng, stop.lat, stop.lng) * ROAD_CURVATURE;
+      accRideDist += getDistanceMeters(prev.lat, prev.lng, stop.lat, stop.lng) * 1.18;
       distLabel = `+${(accRideDist / 1000).toFixed(1)} km`;
     }
 
@@ -1983,10 +1980,10 @@ function updateStopsTable(busLat, busLng, currentSpeedKmph) {
     if (rowClass) tr.className = rowClass;
     tr.innerHTML = `
       <td class="p-2 sm:p-2.5 pl-3 sm:pl-4">${displayStepNum}</td>
-      <td class="p-2 sm:p-2.5 font-semibold text-slate-800">${stop.name}</td>
-      <td class="p-2 sm:p-2.5 text-slate-600 hidden sm:table-cell">${distLabel}</td>
-      <td class="p-2 sm:p-2.5 text-slate-600 text-[11px]">${remLabel}</td>
-      <td class="p-2 sm:p-2.5 pr-3 sm:pr-4 text-right sm:text-left"><span class="px-1.5 sm:px-2 py-0.5 rounded text-[10px] sm:text-[11px] font-bold ${badgeClass}">${etaLabel}</span></td>
+      <td class="p-2 sm:p-2.5 font-medium">${stop.name}</td>
+      <td class="p-2 sm:p-2.5 text-slate-400 hidden sm:table-cell">${distLabel}</td>
+      <td class="p-2 sm:p-2.5 text-slate-400 text-[11px]">${remLabel}</td>
+      <td class="p-2 sm:p-2.5 pr-3 sm:pr-4 text-right sm:text-left"><span class="px-1.5 sm:px-2 py-0.5 rounded text-[10px] sm:text-[11px] font-bold bg-slate-100 text-slate-500">${etaLabel}</span></td>
     `;
     tbody.appendChild(tr);
   });
