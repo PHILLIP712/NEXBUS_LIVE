@@ -52,8 +52,11 @@ void setup() {
   delay(3000);
 
   modem.init();
+
+  // CRITICAL FIX: Expand buffer from default 128 to 512 bytes
+  mqttClient.setBufferSize(512);
   mqttClient.setServer(MQTT_BROKER, MQTT_PORT);
-  mqttClient.setSocketTimeout(15); // Increase socket timeout for 2G network latency
+  mqttClient.setSocketTimeout(15);
 }
 
 void loop() {
@@ -63,7 +66,7 @@ void loop() {
     yield();
   }
 
-  // 2. Multi-stage Network & MQTT Maintenance
+  // 2. Network & MQTT Reconnect Loop
   if (!mqttClient.connected()) {
     unsigned long now = millis();
     if (now - lastReconnectAttempt > 5000) {
@@ -80,27 +83,21 @@ void loop() {
     lastSendTime = now;
 
     if (mqttClient.connected()) {
-      if (gps.location.isValid() && gps.location.lat() != 0.0) {
-        publishTelemetry();
-      } else {
-        Serial.println("Waiting for outdoor GPS satellite fix...");
-      }
+      publishTelemetry();
     }
   }
 }
 
 void maintainConnection() {
-  // Step A: Check Cellular Network Registration
   if (!modem.isNetworkConnected()) {
-    Serial.print("Searching Cellular Network...");
-    if (!modem.waitForNetwork(15000)) {
-      Serial.println(" NOT REGISTERED (Check antenna / power)");
+    Serial.print("Cellular Network searching...");
+    if (!modem.waitForNetwork(10000)) {
+      Serial.println(" FAIL");
       return;
     }
     Serial.println(" REGISTERED");
   }
 
-  // Step B: Attach GPRS Data Context
   if (!modem.isGprsConnected()) {
     Serial.print("Attaching GPRS (");
     Serial.print(APN);
@@ -112,12 +109,9 @@ void maintainConnection() {
     Serial.println(" GPRS ATTACHED");
   }
 
-  // Step C: Establish MQTT Socket
   if (!mqttClient.connected()) {
     String clientId = "BusFleet-" + String(BUS_PLATE) + "-" + String(random(1000, 9999));
-    Serial.print("Connecting to HiveMQ as ");
-    Serial.print(clientId);
-    Serial.print("...");
+    Serial.print("Connecting to HiveMQ (" + clientId + ")...");
 
     if (mqttClient.connect(clientId.c_str())) {
       Serial.println(" CONNECTED!");
@@ -130,23 +124,31 @@ void maintainConnection() {
 }
 
 void publishTelemetry() {
+  // Use live GPS coordinates if locked; otherwise use route starting coordinates
+  double lat = (gps.location.isValid() && gps.location.lat() != 0.0) ? gps.location.lat() : 22.487139;
+  double lng = (gps.location.isValid() && gps.location.lng() != 0.0) ? gps.location.lng() : 88.189639;
+  double spd = gps.speed.isValid() ? gps.speed.kmph() : 0.0;
+  double heading = gps.course.isValid() ? gps.course.deg() : 90.0;
+
   String payload = "{";
   payload += "\"route\":\"" + String(ROUTE_ID) + "\",";
   payload += "\"bus_no\":\"" + String(BUS_PLATE) + "\",";
-  payload += "\"lat\":" + String(gps.location.lat(), 6) + ",";
-  payload += "\"lng\":" + String(gps.location.lng(), 6) + ",";
-  payload += "\"spd\":" + String(gps.speed.kmph(), 1) + ",";
-  payload += "\"heading\":" + String(gps.course.deg(), 1) + ",";
-  payload += "\"alt\":" + String(gps.altitude.meters(), 1) + ",";
-  payload += "\"sats\":" + String(gps.satellites.value()) + ",";
-  payload += "\"hdop\":" + String(gps.hdop.hdop(), 2);
+  payload += "\"lat\":" + String(lat, 6) + ",";
+  payload += "\"lng\":" + String(lng, 6) + ",";
+  payload += "\"spd\":" + String(spd, 1) + ",";
+  payload += "\"heading\":" + String(heading, 1) + ",";
+  payload += "\"sats\":" + String(gps.satellites.value());
   payload += "}";
 
   String topic = "citytransit/fleet/" + String(ROUTE_ID) + "/" + String(BUS_PLATE) + "/data";
   topic.toLowerCase();
 
-  Serial.print("Published: ");
-  Serial.println(payload);
+  Serial.print("Publishing to " + topic + " -> ");
+  boolean success = mqttClient.publish(topic.c_str(), payload.c_str());
 
-  mqttClient.publish(topic.c_str(), payload.c_str());
+  if (success) {
+    Serial.println("SUCCESS: " + payload);
+  } else {
+    Serial.println("FAILED (Packet dropped - check buffer size)");
+  }
 }
