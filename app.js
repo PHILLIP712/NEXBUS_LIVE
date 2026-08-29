@@ -640,7 +640,7 @@ function closeLinesModal() {
 }
 
 // ==========================================
-// 5. MAX-RIDE DIVERGENCE TRANSIT ENGINE
+// 5. DIRECTION-AWARE TRANSIT ROUTING ENGINE
 // ==========================================
 function findMatchingRoutes(pName, dName) {
   let pNorm = normalizeStr(pName);
@@ -652,7 +652,7 @@ function findMatchingRoutes(pName, dName) {
 
   const allRouteKeys = Object.keys(window.ROUTES_DATABASE);
 
-  // 1. Direct Routes Discovery (Checked First)
+  // 1. Direct Routes Discovery
   for (const rKey of allRouteKeys) {
     const rObj = window.ROUTES_DATABASE[rKey];
     const fStops = rObj.forwardStops || [];
@@ -701,6 +701,7 @@ function findMatchingRoutes(pName, dName) {
 
           const dStop = leg2.stops[d2Idx];
           const commonStops = [];
+          const isSameDirection = (leg1.dir === leg2.dir);
 
           // Scan all subsequent stops on Leg 1 for an interchange point
           for (let tIdx = pIdx + 1; tIdx < leg1.stops.length; tIdx++) {
@@ -710,7 +711,6 @@ function findMatchingRoutes(pName, dName) {
             // Valid interchange if Transfer occurs BEFORE Destination on Leg 2
             if (t2Idx !== -1 && t2Idx < d2Idx) {
               const distPickupToDest = getDistanceMeters(pStop.lat, pStop.lng, dStop.lat, dStop.lng);
-              const distTransferToDest = getDistanceMeters(transferStop.lat, transferStop.lng, dStop.lat, dStop.lng);
               const distLeg1 = getDistanceMeters(pStop.lat, pStop.lng, transferStop.lat, transferStop.lng);
               const distLeg2 = getDistanceMeters(transferStop.lat, transferStop.lng, dStop.lat, dStop.lng);
               const totalDist = distLeg1 + distLeg2;
@@ -722,7 +722,7 @@ function findMatchingRoutes(pName, dName) {
                   tIdx: tIdx,
                   t2Idx: t2Idx,
                   totalDist: totalDist,
-                  distTransferToDest: distTransferToDest,
+                  distTransferToDest: distLeg2,
                   leg1StopsCount: tIdx - pIdx
                 });
               }
@@ -730,13 +730,14 @@ function findMatchingRoutes(pName, dName) {
           }
 
           if (commonStops.length > 0) {
-            // Pick transfer closest to destination & maximize ride on Leg 1
-            commonStops.sort((a, b) => {
-              if (Math.abs(a.distTransferToDest - b.distTransferToDest) > 400) {
-                return a.distTransferToDest - b.distTransferToDest;
-              }
-              return b.tIdx - a.tIdx;
-            });
+            // DIRECTION-AWARE TRANSFER SELECTION:
+            if (isSameDirection) {
+              // Same-direction (e.g. Eden City -> Howrah): Maximize ride on live Leg 1 before divergence
+              commonStops.sort((a, b) => a.distTransferToDest - b.distTransferToDest || b.tIdx - a.tIdx);
+            } else {
+              // Opposite-directions (e.g. River Side -> Eden City): Transfer at the immediate junction (minimize overshoot)
+              commonStops.sort((a, b) => a.totalDist - b.totalDist || a.tIdx - b.tIdx);
+            }
 
             const bestTransfer = commonStops[0];
 
@@ -744,14 +745,14 @@ function findMatchingRoutes(pName, dName) {
               const isLine = normalizeStr(b.routeKey || b.route).includes(normalizeStr(r1Key));
               if (!isLine || b.busDir !== leg1.dir) return false;
               const bIdx = findBusNearestStopIndex(b.lat, b.lng, leg1.stops);
-              return bIdx <= pIdx;
+              return bIdx <= bestTransfer.tIdx;
             });
 
             const liveLeg2Buses = Object.values(activeBuses).filter(b => {
               const isLine = normalizeStr(b.routeKey || b.route).includes(normalizeStr(r2Key));
               if (!isLine || b.busDir !== leg2.dir) return false;
               const bIdx = findBusNearestStopIndex(b.lat, b.lng, leg2.stops);
-              return bIdx <= bestTransfer.t2Idx;
+              return bIdx <= d2Idx;
             });
 
             rawTransfers.push({
