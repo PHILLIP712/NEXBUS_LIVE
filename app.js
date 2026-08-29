@@ -41,27 +41,28 @@ function switchMobileTab(tab) {
 
   if (window.innerWidth < 768) {
     if (tab === 'schedule') {
-      busesCol.classList.add('hidden');
-      scheduleCol.classList.remove('hidden');
-      scheduleCol.classList.add('flex');
+      busesCol?.classList.add('hidden');
+      scheduleCol?.classList.remove('hidden');
+      scheduleCol?.classList.add('flex');
       if (tabScheduleBtn && tabBusesBtn) {
         tabScheduleBtn.className = "flex-1 py-1.5 text-xs font-bold rounded-xl bg-white text-slate-900 shadow-sm transition-all flex items-center justify-center gap-1.5";
         tabBusesBtn.className = "flex-1 py-1.5 text-xs font-bold rounded-xl text-slate-500 hover:text-slate-800 transition-all flex items-center justify-center gap-1.5";
       }
     } else {
-      busesCol.classList.remove('hidden');
-      scheduleCol.classList.add('hidden');
-      scheduleCol.classList.remove('flex');
+      busesCol?.classList.remove('hidden');
+      scheduleCol?.classList.add('hidden');
+      scheduleCol?.classList.remove('flex');
       if (tabScheduleBtn && tabBusesBtn) {
         tabBusesBtn.className = "flex-1 py-1.5 text-xs font-bold rounded-xl bg-white text-slate-900 shadow-sm transition-all flex items-center justify-center gap-1.5";
         tabScheduleBtn.className = "flex-1 py-1.5 text-xs font-bold rounded-xl text-slate-500 hover:text-slate-800 transition-all flex items-center justify-center gap-1.5";
       }
     }
   } else {
-    // Desktop reset
-    busesCol.classList.remove('hidden');
-    scheduleCol.classList.remove('hidden');
-    scheduleCol.classList.add('flex');
+    busesCol?.classList.remove('hidden');
+    if (scheduleCol) {
+      scheduleCol.classList.remove('hidden');
+      scheduleCol.classList.add('flex');
+    }
   }
   lucide.createIcons();
 }
@@ -121,12 +122,10 @@ function createDynamicBusMapIcon(routeString, busPlate, heading = 0, destTermina
         <div class="relative w-9 h-9 flex items-center justify-center my-0.5">
           <div class="bus-pulse"></div>
           
-          <!-- Direction Pointer Cone -->
           <div class="absolute inset-0 flex items-center justify-center pointer-events-none transition-transform duration-500 ease-linear" style="${rotationStyle}">
             <div class="w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-b-[10px] border-b-emerald-400 absolute -top-1.5 drop-shadow-md"></div>
           </div>
 
-          <!-- Central Bus Circle -->
           <div class="relative z-10 w-8 h-8 bg-slate-900 text-white rounded-full border-2 border-white shadow-xl flex items-center justify-center">
             <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6v6"/><path d="M15 6v6"/><path d="M2 12h19.6"/><path d="M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.4-.1-.8-.2-1.2l-1.4-5C20.1 6.8 19.1 6 18 6H4a2 2 0 0 0-2 2v10h3"/><circle cx="7" cy="18" r="2"/><circle cx="15" cy="18" r="2"/></svg>
           </div>
@@ -623,19 +622,18 @@ function closeLinesModal() {
 }
 
 // ==========================================
-// UNIVERSAL GEOMETRIC ENGINE
+// 5. DIRECT-FIRST & PARALLEL TRANSFER ROUTING ENGINE
 // ==========================================
 function findMatchingRoutes(pName, dName) {
   let pNorm = normalizeStr(pName);
   let dNorm = normalizeStr(dName);
   const directMatches = [];
-  const candidateTransfers = [];
 
   if (!window.ROUTES_DATABASE) return { direct: [], transfers: [] };
 
   const allRouteKeys = Object.keys(window.ROUTES_DATABASE);
 
-  // 1. Direct Routes
+  // 1. Direct Routes Search (UP and DOWN)
   for (const rKey of allRouteKeys) {
     const rObj = window.ROUTES_DATABASE[rKey];
     
@@ -655,7 +653,14 @@ function findMatchingRoutes(pName, dName) {
     }
   }
 
-  // 2. 1-Transfer Routes
+  // IF DIRECT ROUTES EXIST: Always prefer direct routes and do NOT calculate transfers
+  if (directMatches.length > 0) {
+    return { direct: directMatches, transfers: [] };
+  }
+
+  // 2. 1-Transfer Search (ONLY performed when zero direct routes exist)
+  const candidateTransfers = [];
+
   for (const r1Key of allRouteKeys) {
     const r1 = window.ROUTES_DATABASE[r1Key];
     const directions1 = [
@@ -773,7 +778,7 @@ function findMatchingRoutes(pName, dName) {
     return liveScoreB - liveScoreA || a.totalDist - b.totalDist;
   });
 
-  return { direct: directMatches, transfers: candidateTransfers };
+  return { direct: [], transfers: candidateTransfers };
 }
 
 function handleSearchClick() {
@@ -789,35 +794,17 @@ function handleSearchClick() {
   busNearestStopIdx = 0;
   selectedBusPlate = null;
 
-  const hasDirect = lastSearchResult.direct.length > 0;
-  const hasTransfers = lastSearchResult.transfers.length > 0;
-
-  if (!hasDirect && !hasTransfers) {
-    alert("No direct or connecting route found between these locations in this direction.");
+  if (lastSearchResult.direct.length > 0) {
+    selectDirectOption(0, false);
     return;
   }
 
-  const hasLiveDirect = hasDirect && lastSearchResult.direct.some(d => {
-    return Object.values(activeBuses).some(b => {
-      const isLine = normalizeStr(b.routeKey || b.route).includes(normalizeStr(d.routeKey));
-      const isDir = (b.busDir === d.direction);
-      if (!isLine || !isDir) return false;
-      const bIdx = findBusNearestStopIndex(b.lat, b.lng, d.stops);
-      return bIdx <= d.pIdx;
-    });
-  });
-
-  const hasLiveTransfer = hasTransfers && lastSearchResult.transfers.some(t => t.hasLiveLeg1);
-
-  if (hasLiveDirect) {
-    selectDirectOption(0, false);
-  } else if (hasLiveTransfer) {
+  if (lastSearchResult.transfers.length > 0) {
     selectTransferOption(0, false);
-  } else if (hasDirect) {
-    selectDirectOption(0, false);
-  } else {
-    selectTransferOption(0, false);
+    return;
   }
+
+  alert("No direct or connecting route found between these locations in this direction.");
 }
 
 function selectDirectOption(index = 0, maintainTracking = false) {
@@ -863,8 +850,8 @@ function selectDirectOption(index = 0, maintainTracking = false) {
       renderSchedulePreview();
     }
   } else {
-    document.getElementById("stopsTable").classList.add("hidden");
-    document.getElementById("noTrackPlaceholder").classList.remove("hidden");
+    document.getElementById("stopsTable")?.classList.add("hidden");
+    document.getElementById("noTrackPlaceholder")?.classList.remove("hidden");
   }
 
   updateAvailableBusesList();
@@ -912,8 +899,8 @@ function selectTransferOption(index = 0, maintainTracking = false) {
       renderSchedulePreview();
     }
   } else {
-    document.getElementById("stopsTable").classList.add("hidden");
-    document.getElementById("noTrackPlaceholder").classList.remove("hidden");
+    document.getElementById("stopsTable")?.classList.add("hidden");
+    document.getElementById("noTrackPlaceholder")?.classList.remove("hidden");
   }
 
   updateAvailableBusesList();
@@ -980,8 +967,8 @@ function startTracking() {
 
   isTrackingConfirmed = true;
   
-  document.getElementById("stopsTable").classList.remove("hidden");
-  document.getElementById("noTrackPlaceholder").classList.add("hidden");
+  document.getElementById("stopsTable")?.classList.remove("hidden");
+  document.getElementById("noTrackPlaceholder")?.classList.add("hidden");
 
   updateDirectionBannerText();
   document.getElementById("activeTripBar").classList.remove("hidden");
@@ -989,7 +976,6 @@ function startTracking() {
   renderRoutePins(true);
   updateAvailableBusesList();
 
-  // On mobile screens, automatically slide to the Stop Schedule view
   if (window.innerWidth < 768) {
     switchMobileTab('schedule');
   }
@@ -1005,8 +991,8 @@ function startTracking() {
 function cancelTracking() {
   isTrackingConfirmed = false;
 
-  document.getElementById("stopsTable").classList.add("hidden");
-  document.getElementById("noTrackPlaceholder").classList.remove("hidden");
+  document.getElementById("stopsTable")?.classList.add("hidden");
+  document.getElementById("noTrackPlaceholder")?.classList.remove("hidden");
 
   document.getElementById("activeTripBar").classList.add("hidden");
   document.getElementById("floatingBusCard").classList.add("hidden");
@@ -1015,7 +1001,6 @@ function cancelTracking() {
   renderRoutePins(false);
   updateAvailableBusesList();
 
-  // On mobile screens, return back to the Buses list view
   if (window.innerWidth < 768) {
     switchMobileTab('buses');
   }
@@ -1023,13 +1008,13 @@ function cancelTracking() {
 
 function renderSchedulePreview() {
   if (!isTrackingConfirmed) {
-    document.getElementById("stopsTable").classList.add("hidden");
-    document.getElementById("noTrackPlaceholder").classList.remove("hidden");
+    document.getElementById("stopsTable")?.classList.add("hidden");
+    document.getElementById("noTrackPlaceholder")?.classList.remove("hidden");
     return;
   }
 
-  document.getElementById("stopsTable").classList.remove("hidden");
-  document.getElementById("noTrackPlaceholder").classList.add("hidden");
+  document.getElementById("stopsTable")?.classList.remove("hidden");
+  document.getElementById("noTrackPlaceholder")?.classList.add("hidden");
 
   const tbody = document.getElementById("stopsTableBody");
   tbody.innerHTML = "";
@@ -1476,7 +1461,7 @@ function updateAvailableBusesList() {
 
     if (!isCorridorMatch || !isSameDir) return;
 
-    const busCurrentIdx = findBusNearestStopIndex(bus.lat, bus.lng, effectiveStops);
+    const busCurrentIdx = findBusNearestStopIndex(bus.lat, busLng, effectiveStops);
     const busLocName = effectiveStops[busCurrentIdx]?.name || "En Route";
 
     if (userPickupIdx !== -1 && busCurrentIdx > userPickupIdx) return;
@@ -1663,13 +1648,13 @@ function selectBus(plate) {
 // ==========================================
 function updateStopsTable(busLat, busLng, currentSpeedKmph) {
   if (!isTrackingConfirmed || !selectedPickupStop || !selectedDestStop) {
-    document.getElementById("stopsTable").classList.add("hidden");
-    document.getElementById("noTrackPlaceholder").classList.remove("hidden");
+    document.getElementById("stopsTable")?.classList.add("hidden");
+    document.getElementById("noTrackPlaceholder")?.classList.remove("hidden");
     return;
   }
 
-  document.getElementById("stopsTable").classList.remove("hidden");
-  document.getElementById("noTrackPlaceholder").classList.add("hidden");
+  document.getElementById("stopsTable")?.classList.remove("hidden");
+  document.getElementById("noTrackPlaceholder")?.classList.add("hidden");
 
   if (!selectedBusPlate || !activeBuses[selectedBusPlate]) {
     renderSchedulePreview();
@@ -1798,114 +1783,35 @@ function updateStopsTable(busLat, busLng, currentSpeedKmph) {
     });
 
     scrollTableToActiveRow();
-    renderRoutePins(false);
-    updateAvailableBusesList();
-    updateTripSummaryUI();
     return;
   }
 
-  const tbody = document.getElementById("stopsTableBody");
-  tbody.innerHTML = "";
+  const pIdx = selectedPickupStop ? currentStopsList.findIndex(s => normalizeStr(s.name) === normalizeStr(selectedPickupStop.name)) : 0;
+  const dIdx = selectedDestStop ? currentStopsList.findIndex(s => normalizeStr(s.name) === normalizeStr(selectedDestStop.name)) : currentStopsList.length - 1;
 
-  const pIdx = currentStopsList.findIndex(s => normalizeStr(s.name) === normalizeStr(selectedPickupStop.name));
-  const dIdx = currentStopsList.findIndex(s => normalizeStr(s.name) === normalizeStr(selectedDestStop.name));
-  if (pIdx === -1 || dIdx === -1 || pIdx >= dIdx) return;
+  const journeyStops = (pIdx !== -1 && dIdx !== -1 && pIdx <= dIdx) ? currentStopsList.slice(pIdx, dIdx + 1) : [];
 
-  const busAbsoluteIdx = findBusNearestStopIndex(busLat, busLng, currentStopsList);
-  busNearestStopIdx = busAbsoluteIdx;
-
-  const startSpanIdx = Math.min(busAbsoluteIdx, pIdx);
-  const journeyStops = currentStopsList.slice(startSpanIdx, dIdx + 1);
-
-  const ROAD_CURVATURE = 1.25;
-  let accRideDist = 0;
-  let rideStepNum = 1;
-
-  journeyStops.forEach((stop, relIdx) => {
-    const actualStopIdx = startSpanIdx + relIdx;
+  journeyStops.forEach((stop, idx) => {
     let rowClass = "";
-    let badgeClass = "bg-sky-50 text-sky-700 border border-sky-200";
-    let distLabel = "--";
-    let etaLabel = "--";
-    let remLabel = "--";
-    let displayStepNum = "";
-
-    if (actualStopIdx < pIdx) {
-      displayStepNum = `<span class="text-amber-500 font-black text-xs">●</span>`;
-      const dMeters = calculateAccurateBusToStopDistance(busLat, busLng, actualStopIdx, currentStopsList);
-      distLabel = dMeters >= 1000 ? `${(dMeters / 1000).toFixed(1)} km` : `${Math.round(dMeters)} m`;
-    } else if (actualStopIdx === pIdx) {
-      displayStepNum = `${rideStepNum++}`;
-      const dToPickup = calculateAccurateBusToStopDistance(busLat, busLng, pIdx, currentStopsList);
-      const pickupDistStr = dToPickup >= 1000 ? `${(dToPickup / 1000).toFixed(1)} km` : `${Math.round(dToPickup)} m`;
-      distLabel = `${pickupDistStr}`;
-    } else {
-      displayStepNum = `${rideStepNum++}`;
-      const prev = currentStopsList[actualStopIdx - 1];
-      accRideDist += getDistanceMeters(prev.lat, prev.lng, stop.lat, stop.lng) * ROAD_CURVATURE;
-      distLabel = `+${(accRideDist / 1000).toFixed(1)} km`;
-    }
-
-    const dDirectToStop = getDistanceMeters(busLat, busLng, stop.lat, stop.lng);
-
-    if (busAbsoluteIdx > actualStopIdx) {
-      etaLabel = "Departed";
-      badgeClass = "bg-slate-100 text-slate-400";
-      remLabel = "Missed";
-      rowClass = "opacity-40";
-    } else if (actualStopIdx === busAbsoluteIdx && busAbsoluteIdx < pIdx) {
-      rowClass = "bg-amber-50/90 border-l-4 border-amber-500 font-bold text-slate-900 active-target-stop";
-      if (dDirectToStop <= 100) {
-        etaLabel = "Bus Here";
-      } else {
-        const stopEtaSec = calculateEtaSeconds(busLat, busLng, currentSpeedKmph, actualStopIdx, currentStopsList);
-        etaLabel = formatEtaTime(stopEtaSec);
-      }
-      remLabel = "🟡 Live Location";
-    } else if (actualStopIdx === pIdx) {
+    if (idx === 0) {
       rowClass = "bg-emerald-50/80 border-l-4 border-emerald-500 font-bold text-slate-900 active-target-stop";
-      const stopEtaSec = calculateEtaSeconds(busLat, busLng, currentSpeedKmph, actualStopIdx, currentStopsList);
-      etaLabel = formatEtaTime(stopEtaSec);
-      const stopsToPickup = actualStopIdx - busAbsoluteIdx;
-      
-      if (stopsToPickup === 0) {
-        remLabel = (dDirectToStop <= 100) ? "🟢 Arrived" : "🟢 Approaching";
-      } else {
-        remLabel = `🟢 Boarding (${stopsToPickup} away)`;
-      }
-    } else if (relIdx === journeyStops.length - 1) {
+    } else if (idx === journeyStops.length - 1) {
       rowClass = "bg-rose-50/80 border-l-4 border-rose-500 font-bold text-slate-900";
-      const stopEtaSec = calculateEtaSeconds(busLat, busLng, currentSpeedKmph, actualStopIdx, currentStopsList);
-      etaLabel = formatEtaTime(stopEtaSec);
-      remLabel = "🏁 Final Stop";
-    } else if (actualStopIdx < pIdx) {
-      const stopEtaSec = calculateEtaSeconds(busLat, busLng, currentSpeedKmph, actualStopIdx, currentStopsList);
-      etaLabel = formatEtaTime(stopEtaSec);
-      const stopsAway = actualStopIdx - busAbsoluteIdx;
-      remLabel = `Approach • ${stopsAway} stop${stopsAway > 1 ? 's' : ''}`;
-    } else {
-      const stopEtaSec = calculateEtaSeconds(busLat, busLng, currentSpeedKmph, actualStopIdx, currentStopsList);
-      etaLabel = formatEtaTime(stopEtaSec);
-      const inRideStops = actualStopIdx - pIdx;
-      remLabel = `+${inRideStops} stop${inRideStops > 1 ? 's' : ''} ride`;
     }
 
     const tr = document.createElement("tr");
     if (rowClass) tr.className = rowClass;
     tr.innerHTML = `
-      <td class="p-2 sm:p-2.5 pl-3 sm:pl-4">${displayStepNum}</td>
-      <td class="p-2 sm:p-2.5 font-semibold text-slate-800">${stop.name}</td>
-      <td class="p-2 sm:p-2.5 text-slate-600 hidden sm:table-cell">${distLabel}</td>
-      <td class="p-2 sm:p-2.5 text-slate-600 text-[11px]">${remLabel}</td>
-      <td class="p-2 sm:p-2.5 pr-3 sm:pr-4 text-right sm:text-left"><span class="px-1.5 sm:px-2 py-0.5 rounded text-[10px] sm:text-[11px] font-bold ${badgeClass}">${etaLabel}</span></td>
+      <td class="p-2 sm:p-2.5 pl-3 sm:pl-4">${idx + 1}</td>
+      <td class="p-2 sm:p-2.5 font-medium">${stop.name}</td>
+      <td class="p-2 sm:p-2.5 text-slate-400 hidden sm:table-cell">--</td>
+      <td class="p-2 sm:p-2.5 text-slate-400 text-[11px]">--</td>
+      <td class="p-2 sm:p-2.5 pr-3 sm:pr-4 text-right sm:text-left"><span class="px-1.5 sm:px-2 py-0.5 rounded text-[10px] sm:text-[11px] font-bold bg-slate-100 text-slate-500">Scheduled</span></td>
     `;
     tbody.appendChild(tr);
   });
 
   scrollTableToActiveRow();
-  renderRoutePins(false);
-  updateAvailableBusesList();
-  updateTripSummaryUI();
 }
 
 function recenterMap() {
@@ -1931,8 +1837,8 @@ const client = mqtt.connect('wss://broker.hivemq.com:8884/mqtt', {
 client.on('connect', () => {
   console.log('Connected to HiveMQ Unified Fleet WebSocket Hub');
   if (connBadge) {
-    connBadge.className = "px-2.5 py-1 rounded-full font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-sm flex items-center gap-1";
-    connBadge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span><span>Live Connected</span>`;
+    connBadge.className = "px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-sm flex items-center gap-1 text-[11px]";
+    connBadge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span><span>Live</span>`;
   }
   client.subscribe('citytransit/fleet/#', (err) => {
     if (err) console.error('Subscription error:', err);
@@ -1941,14 +1847,14 @@ client.on('connect', () => {
 
 client.on('reconnect', () => {
   if (connBadge) {
-    connBadge.className = "px-2.5 py-1 rounded-full font-bold bg-amber-50 text-amber-700 border border-amber-200 shadow-sm flex items-center gap-1";
-    connBadge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span><span>Reconnecting...</span>`;
+    connBadge.className = "px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full font-bold bg-amber-50 text-amber-700 border border-amber-200 shadow-sm flex items-center gap-1 text-[11px]";
+    connBadge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span><span>Connecting...</span>`;
   }
 });
 
 client.on('offline', () => {
   if (connBadge) {
-    connBadge.className = "px-2.5 py-1 rounded-full font-bold bg-rose-50 text-rose-700 border border-rose-200 shadow-sm flex items-center gap-1";
+    connBadge.className = "px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full font-bold bg-rose-50 text-rose-700 border border-rose-200 shadow-sm flex items-center gap-1 text-[11px]";
     connBadge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-rose-500"></span><span>Offline</span>`;
   }
 });
