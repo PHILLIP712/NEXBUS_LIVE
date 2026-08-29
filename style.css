@@ -70,6 +70,7 @@ body {
   justify-content: center;
   transform: translate(-50%, -50%);
   pointer-events: auto;
+  transition: transform 0.4s ease-out; /* Smooth heading and marker updates */
 }
 
 /* Route Badge Pill (Top) */

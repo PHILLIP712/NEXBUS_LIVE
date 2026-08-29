@@ -1772,7 +1772,7 @@ client.on('offline', () => {
 client.on('message', (topic, message) => {
   try {
     const rawPayload = message.toString().trim();
-    if (!rawPayload) return; // Ignore blank or malformed test pings
+    if (!rawPayload) return;
 
     const d = JSON.parse(rawPayload);
     if (!d || !d.lat || !d.lng || !window.ROUTES_DATABASE) return;
@@ -1829,7 +1829,26 @@ client.on('message', (topic, message) => {
       activeBusMarkers[busPlate].setLatLng(pos);
       activeBusMarkers[busPlate].setIcon(createDynamicBusMapIcon(routeConfig.name, busPlate, busHeading, destTerminal));
     }
-    breadcrumbLines[busPlate].addLatLng(pos);
+    
+    // Anti-teleportation filter: Clear breadcrumbs if coordinates jump > 500m instantly
+    if (breadcrumbLines[busPlate]) {
+      const latLngs = breadcrumbLines[busPlate].getLatLngs();
+      if (latLngs.length > 0) {
+        const lastPt = latLngs[latLngs.length - 1];
+        const jumpDist = getDistanceMeters(lastPt.lat, lastPt.lng, busLat, busLng);
+        if (jumpDist > 500) {
+          breadcrumbLines[busPlate].setLatLngs([]); // Reset line to clear cross-map streak
+        }
+      }
+
+      breadcrumbLines[busPlate].addLatLng(pos);
+      
+      // Cap breadcrumb memory to latest 60 points
+      const currentPts = breadcrumbLines[busPlate].getLatLngs();
+      if (currentPts.length > 60) {
+        breadcrumbLines[busPlate].setLatLngs(currentPts.slice(-60));
+      }
+    }
 
     if (busPlate === selectedBusPlate) {
       updateStopsTable(busLat, busLng, busSpeed);
@@ -1841,11 +1860,11 @@ client.on('message', (topic, message) => {
   }
 });
 
-// Purge offline buses after 40 seconds of silence
+// Purge offline buses after 90 seconds of silence (tolerant to 2G network fluctuations)
 setInterval(() => {
   const now = Date.now();
   for (const [plate, bus] of Object.entries(activeBuses)) {
-    if (now - bus.lastSeen > 40000) {
+    if (now - bus.lastSeen > 90000) {
       if (activeBusMarkers[plate]) {
         map.removeLayer(activeBusMarkers[plate]);
         delete activeBusMarkers[plate];
