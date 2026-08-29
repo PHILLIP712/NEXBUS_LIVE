@@ -225,6 +225,18 @@ function calculateTripSummary(pickupStop, destStop, stopsList, effectiveSpeedKmp
   };
 }
 
+// Check if any live bus is currently running on a specific leg
+function checkLegLiveAvailability(routeKey, direction, maxStopIdx, stops) {
+  if (!stops || stops.length === 0) return false;
+  return Object.values(activeBuses).some(b => {
+    const isLine = normalizeStr(b.routeKey || b.route).includes(normalizeStr(routeKey));
+    const isDir = (b.busDir === direction);
+    if (!isLine || !isDir) return false;
+    const bIdx = findBusNearestStopIndex(b.lat, b.lng, stops);
+    return maxStopIdx === -1 || bIdx <= maxStopIdx;
+  });
+}
+
 // ==========================================
 // ROBUST JITTER-PROOF DIRECTION STABILIZER
 // ==========================================
@@ -1034,6 +1046,9 @@ function renderRoutePins(autoFit = false) {
 
   const activeBus = (selectedBusPlate && activeBuses[selectedBusPlate]) ? activeBuses[selectedBusPlate] : null;
 
+  // =======================================================
+  // 1-TRANSFER DYNAMIC SOLID / DASHED POLYLINE RENDERING
+  // =======================================================
   if (currentTripPlanType === "TRANSFER" && activeTransferPlan) {
     const pIdx = activeTransferPlan.leg1.pIdx;
     const tIdx = activeTransferPlan.leg1.tIdx;
@@ -1058,20 +1073,49 @@ function renderRoutePins(autoFit = false) {
       }
     }
 
+    // Check live availability for Leg 1 and Leg 2
+    const hasLiveLeg1 = checkLegLiveAvailability(
+      activeTransferPlan.leg1.routeKey,
+      activeTransferPlan.leg1.direction,
+      activeTransferPlan.leg1.pIdx,
+      activeTransferPlan.leg1.stops
+    );
+
+    const hasLiveLeg2 = checkLegLiveAvailability(
+      activeTransferPlan.leg2.routeKey,
+      activeTransferPlan.leg2.direction,
+      activeTransferPlan.leg2.tIdx,
+      activeTransferPlan.leg2.stops
+    );
+
     const leg1Stops = activeTransferPlan.leg1.stops.slice(pIdx, tIdx + 1);
     const leg1Points = leg1Stops.map(s => [s.lat, s.lng]);
-    leg1PolylineLayer = L.polyline(leg1Points, {
+
+    // Leg 1: Solid green when live; dashed when scheduled/offline
+    leg1PolylineLayer = L.polyline(leg1Points, hasLiveLeg1 ? {
       color: '#059669',
       weight: 6,
       opacity: 0.95
+    } : {
+      color: '#64748b',
+      weight: 5,
+      dashArray: '8, 8',
+      opacity: 0.85
     }).addTo(map);
 
     const leg2Stops = activeTransferPlan.leg2.stops.slice(t2Idx, d2Idx + 1);
     const leg2Points = leg2Stops.map(s => [s.lat, s.lng]);
-    leg2PolylineLayer = L.polyline(leg2Points, {
+
+    // Leg 2: Solid indigo when live; dashed indigo/slate when scheduled/offline
+    leg2PolylineLayer = L.polyline(leg2Points, hasLiveLeg2 ? {
       color: '#4f46e5',
       weight: 6,
       opacity: 0.95
+    } : {
+      color: '#818cf8',
+      weight: 5,
+      dashArray: '8, 8',
+      opacity: 0.85
     }).addTo(map);
 
     if (autoFit) {
@@ -1106,6 +1150,9 @@ function renderRoutePins(autoFit = false) {
     return;
   }
 
+  // =======================================================
+  // DIRECT ROUTE DYNAMIC SOLID / DASHED POLYLINE RENDERING
+  // =======================================================
   const pIdx = currentStopsList.findIndex(s => normalizeStr(s.name) === normalizeStr(selectedPickupStop.name));
   const dIdx = currentStopsList.findIndex(s => normalizeStr(s.name) === normalizeStr(selectedDestStop.name));
 
@@ -1129,12 +1176,28 @@ function renderRoutePins(autoFit = false) {
     }
   }
 
+  // Check if any live bus is available on this direct corridor
+  const hasLiveDirectBus = Object.values(activeBuses).some(b => {
+    const isLine = normalizeStr(b.routeKey || b.route).includes(normalizeStr(activeRouteKey));
+    const isDir = (b.busDir === currentDirection);
+    if (!isLine || !isDir) return false;
+    const bIdx = findBusNearestStopIndex(b.lat, b.lng, currentStopsList);
+    return bIdx <= pIdx;
+  });
+
   const rideStops = currentStopsList.slice(pIdx, dIdx + 1);
   const ridePoints = rideStops.map(s => [s.lat, s.lng]);
-  routePolylineLayer = L.polyline(ridePoints, {
+
+  // Solid green when live bus is active; distinct dashed slate/blue when scheduled only
+  routePolylineLayer = L.polyline(ridePoints, hasLiveDirectBus ? {
     color: '#059669',
     weight: 6,
     opacity: 0.95
+  } : {
+    color: '#64748b',
+    weight: 5,
+    dashArray: '8, 8',
+    opacity: 0.85
   }).addTo(map);
 
   if (autoFit) {
@@ -1233,7 +1296,7 @@ function updateAvailableBusesList() {
       const etaStr = etaSec !== Infinity ? formatEtaTime(etaSec) : "Scheduled";
 
       const card = document.createElement("div");
-      card.className = `bg-white border ${isSelectedPlan ? 'border-blue-500 ring-2 ring-blue-500/10' : 'border-slate-200'} hover:border-blue-500 rounded-2xl p-3.5 shadow-sm transition-all duration-200 hover:shadow-md cursor-pointer mb-2.5`;
+      card.className = `bg-white border ${isSelectedPlan ? 'border-indigo-500 ring-2 ring-indigo-500/10' : 'border-slate-200'} hover:border-indigo-500 rounded-2xl p-3.5 shadow-sm transition-all duration-200 hover:shadow-md cursor-pointer mb-2.5`;
       card.onclick = () => {
         selectTransferOption(planIdx, false);
       };
@@ -1242,8 +1305,8 @@ function updateAvailableBusesList() {
         <div class="flex items-center justify-between pb-2 border-b border-slate-100">
           <div>
             ${planIdx === 0 ? `
-              <span class="inline-flex items-center gap-1 bg-emerald-600 text-white text-[10px] font-extrabold px-2 py-0.5 rounded-md shadow-sm">
-                ★ Best Option
+              <span class="inline-flex items-center gap-1 bg-indigo-600 text-white text-[10px] font-extrabold px-2 py-0.5 rounded-md shadow-sm">
+                ★ Best Transfer
               </span>
             ` : `
               <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Alternate Transfer</span>
@@ -1257,7 +1320,7 @@ function updateAvailableBusesList() {
 
         <div class="mt-2.5">
           <div class="flex items-baseline justify-between gap-2">
-            <div class="text-lg font-black text-blue-600 tracking-tight flex items-center gap-1.5 flex-wrap">
+            <div class="text-lg font-black text-indigo-600 tracking-tight flex items-center gap-1.5 flex-wrap">
               <span>${r1Name}</span>
               <span class="text-xs text-slate-400 font-normal">➔</span>
               <span>${r2Name}</span>
@@ -1291,8 +1354,8 @@ function updateAvailableBusesList() {
         </div>
 
         <div class="mt-3">
-          <button onclick="event.stopPropagation(); selectTransferOption(${planIdx}, false); startTracking();" class="w-full bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white font-bold text-xs py-2 px-4 rounded-xl shadow-md shadow-blue-500/20 flex items-center justify-center gap-2 transition-all">
-            <i data-lucide="map-pin" class="w-3.5 h-3.5"></i>
+          <button onclick="event.stopPropagation(); selectTransferOption(${planIdx}, false); startTracking();" class="w-full bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] text-white font-bold text-xs py-2 px-4 rounded-xl shadow-md shadow-indigo-600/20 flex items-center justify-center gap-2 transition-all">
+            <i data-lucide="git-merge" class="w-3.5 h-3.5"></i>
             <span>Track this route</span>
           </button>
         </div>
@@ -1373,7 +1436,7 @@ function updateAvailableBusesList() {
       const cardinalDir = (item.bus.busDir === "UP") ? "North Bound" : "South Bound";
 
       const card = document.createElement("div");
-      card.className = `bg-white border ${isSelected ? 'border-blue-500 ring-2 ring-blue-500/10' : 'border-slate-200'} hover:border-blue-500 rounded-2xl p-3.5 shadow-sm transition-all duration-200 hover:shadow-md cursor-pointer mb-2.5`;
+      card.className = `bg-white border ${isSelected ? 'border-emerald-500 ring-2 ring-emerald-500/10' : 'border-slate-200'} hover:border-emerald-500 rounded-2xl p-3.5 shadow-sm transition-all duration-200 hover:shadow-md cursor-pointer mb-2.5`;
       card.onclick = () => selectBus(item.plate);
 
       card.innerHTML = `
@@ -1396,7 +1459,7 @@ function updateAvailableBusesList() {
         <div class="flex items-center justify-between mt-2.5 gap-2">
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2">
-              <span class="text-2xl font-black text-blue-600 tracking-tight shrink-0">${item.bus.route}</span>
+              <span class="text-2xl font-black text-emerald-600 tracking-tight shrink-0">${item.bus.route}</span>
               <span class="text-xs font-bold text-slate-800 truncate">
                 ${selectedPickupStop ? selectedPickupStop.name : 'Origin'} 
                 <span class="text-slate-400 font-normal">➔</span> 
@@ -1425,8 +1488,8 @@ function updateAvailableBusesList() {
         </div>
 
         <div class="mt-3">
-          <button onclick="event.stopPropagation(); selectBus('${item.plate}'); startTracking();" class="w-full bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white font-bold text-xs py-2 px-4 rounded-xl shadow-md shadow-blue-500/20 flex items-center justify-center gap-2 transition-all">
-            <i data-lucide="map-pin" class="w-3.5 h-3.5"></i>
+          <button onclick="event.stopPropagation(); selectBus('${item.plate}'); startTracking();" class="w-full bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-bold text-xs py-2 px-4 rounded-xl shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 transition-all">
+            <i data-lucide="bus" class="w-3.5 h-3.5"></i>
             <span>Track this bus</span>
           </button>
         </div>
@@ -1854,6 +1917,9 @@ client.on('message', (topic, message) => {
       updateStopsTable(busLat, busLng, busSpeed);
     } else {
       updateAvailableBusesList();
+      if (isTrackingConfirmed) {
+        renderRoutePins(false);
+      }
     }
   } catch (e) {
     console.error('Fleet MQTT parse error:', e);
@@ -1863,8 +1929,11 @@ client.on('message', (topic, message) => {
 // Purge offline buses after 90 seconds of silence (tolerant to 2G network fluctuations)
 setInterval(() => {
   const now = Date.now();
+  let stateChanged = false;
+
   for (const [plate, bus] of Object.entries(activeBuses)) {
     if (now - bus.lastSeen > 90000) {
+      stateChanged = true;
       if (activeBusMarkers[plate]) {
         map.removeLayer(activeBusMarkers[plate]);
         delete activeBusMarkers[plate];
@@ -1877,7 +1946,13 @@ setInterval(() => {
       if (selectedBusPlate === plate) {
         selectedBusPlate = null;
       }
-      updateAvailableBusesList();
+    }
+  }
+
+  if (stateChanged) {
+    updateAvailableBusesList();
+    if (isTrackingConfirmed) {
+      renderRoutePins(false);
     }
   }
 }, 5000);
