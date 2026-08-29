@@ -640,7 +640,7 @@ function closeLinesModal() {
 }
 
 // ==========================================
-// 5. UNIVERSAL TRANSIT DISCOVERY ENGINE
+// 5. MAX-RIDE DIVERGENCE TRANSIT ENGINE
 // ==========================================
 function findMatchingRoutes(pName, dName) {
   let pNorm = normalizeStr(pName);
@@ -652,7 +652,7 @@ function findMatchingRoutes(pName, dName) {
 
   const allRouteKeys = Object.keys(window.ROUTES_DATABASE);
 
-  // 1. Direct Routes Discovery
+  // 1. Direct Routes Discovery (Checked First)
   for (const rKey of allRouteKeys) {
     const rObj = window.ROUTES_DATABASE[rKey];
     const fStops = rObj.forwardStops || [];
@@ -673,7 +673,7 @@ function findMatchingRoutes(pName, dName) {
     }
   }
 
-  // 2. 1-Transfer Discovery (Comprehensive junction search)
+  // 2. 1-Transfer Discovery
   for (const r1Key of allRouteKeys) {
     const r1 = window.ROUTES_DATABASE[r1Key];
     const directions1 = [
@@ -710,11 +710,11 @@ function findMatchingRoutes(pName, dName) {
             // Valid interchange if Transfer occurs BEFORE Destination on Leg 2
             if (t2Idx !== -1 && t2Idx < d2Idx) {
               const distPickupToDest = getDistanceMeters(pStop.lat, pStop.lng, dStop.lat, dStop.lng);
+              const distTransferToDest = getDistanceMeters(transferStop.lat, transferStop.lng, dStop.lat, dStop.lng);
               const distLeg1 = getDistanceMeters(pStop.lat, pStop.lng, transferStop.lat, transferStop.lng);
               const distLeg2 = getDistanceMeters(transferStop.lat, transferStop.lng, dStop.lat, dStop.lng);
               const totalDist = distLeg1 + distLeg2;
 
-              // Reasonable transit threshold (allows branch-to-trunk junction turns)
               const maxAllowedDist = Math.max(distPickupToDest * 2.2, 12000);
               if (totalDist <= maxAllowedDist) {
                 commonStops.push({
@@ -722,6 +722,7 @@ function findMatchingRoutes(pName, dName) {
                   tIdx: tIdx,
                   t2Idx: t2Idx,
                   totalDist: totalDist,
+                  distTransferToDest: distTransferToDest,
                   leg1StopsCount: tIdx - pIdx
                 });
               }
@@ -729,21 +730,28 @@ function findMatchingRoutes(pName, dName) {
           }
 
           if (commonStops.length > 0) {
-            commonStops.sort((a, b) => a.totalDist - b.totalDist || a.leg1StopsCount - b.leg1StopsCount);
+            // Pick transfer closest to destination & maximize ride on Leg 1
+            commonStops.sort((a, b) => {
+              if (Math.abs(a.distTransferToDest - b.distTransferToDest) > 400) {
+                return a.distTransferToDest - b.distTransferToDest;
+              }
+              return b.tIdx - a.tIdx;
+            });
+
             const bestTransfer = commonStops[0];
 
             const liveLeg1Buses = Object.values(activeBuses).filter(b => {
               const isLine = normalizeStr(b.routeKey || b.route).includes(normalizeStr(r1Key));
               if (!isLine || b.busDir !== leg1.dir) return false;
               const bIdx = findBusNearestStopIndex(b.lat, b.lng, leg1.stops);
-              return bIdx <= bestTransfer.tIdx;
+              return bIdx <= pIdx;
             });
 
             const liveLeg2Buses = Object.values(activeBuses).filter(b => {
               const isLine = normalizeStr(b.routeKey || b.route).includes(normalizeStr(r2Key));
               if (!isLine || b.busDir !== leg2.dir) return false;
               const bIdx = findBusNearestStopIndex(b.lat, b.lng, leg2.stops);
-              return bIdx <= d2Idx;
+              return bIdx <= bestTransfer.t2Idx;
             });
 
             rawTransfers.push({
@@ -777,7 +785,7 @@ function findMatchingRoutes(pName, dName) {
     }
   }
 
-  // Deduplicate transfer combinations by route pair and interchange point
+  // Deduplicate transfer combinations
   const uniqueTransfersMap = new Map();
   rawTransfers.forEach(plan => {
     const key = `${normalizeStr(plan.leg1.routeKey)}_${normalizeStr(plan.leg2.routeKey)}_${normalizeStr(plan.transferStopName)}`;
@@ -805,7 +813,6 @@ function handleSearchClick() {
     return;
   }
 
-  // Auto-resolve stop objects from database
   const allStops = getAllUniqueStops();
   selectedPickupStop = allStops.find(s => normalizeStr(s.name) === normalizeStr(pickVal)) || { name: pickVal };
   selectedDestStop = allStops.find(s => normalizeStr(s.name) === normalizeStr(destVal)) || { name: destVal };
@@ -1980,9 +1987,9 @@ function updateStopsTable(busLat, busLng, currentSpeedKmph) {
     if (rowClass) tr.className = rowClass;
     tr.innerHTML = `
       <td class="p-2 sm:p-2.5 pl-3 sm:pl-4">${displayStepNum}</td>
-      <td class="p-2 sm:p-2.5 font-semibold text-slate-800">${stop.name}</td>
-      <td class="p-2 sm:p-2.5 text-slate-600 hidden sm:table-cell">${distLabel}</td>
-      <td class="p-2 sm:p-2.5 text-slate-600 text-[11px]">${remLabel}</td>
+      <td class="p-2 sm:p-2.5 font-medium">${stop.name}</td>
+      <td class="p-2 sm:p-2.5 text-slate-400 hidden sm:table-cell">${distLabel}</td>
+      <td class="p-2 sm:p-2.5 text-slate-400 text-[11px]">${remLabel}</td>
       <td class="p-2 sm:p-2.5 pr-3 sm:pr-4 text-right sm:text-left"><span class="px-1.5 sm:px-2 py-0.5 rounded text-[10px] sm:text-[11px] font-bold bg-slate-100 text-slate-500">${etaLabel}</span></td>
     `;
     tbody.appendChild(tr);
