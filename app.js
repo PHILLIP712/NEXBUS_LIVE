@@ -715,7 +715,7 @@ function findMatchingRoutes(pName, dName) {
               const distLeg2 = getDistanceMeters(transferStop.lat, transferStop.lng, dStop.lat, dStop.lng);
               const totalDist = distLeg1 + distLeg2;
 
-              const maxAllowedDist = Math.max(distPickupToDest * 2.2, 12000);
+              const maxAllowedDist = Math.max(distPickupToDest * 2.2, 14000);
               if (totalDist <= maxAllowedDist) {
                 commonStops.push({
                   transferStopName: transferStop.name,
@@ -1148,7 +1148,7 @@ function renderSchedulePreview() {
       <td class="p-2 sm:p-2.5 font-medium">${stop.name}</td>
       <td class="p-2 sm:p-2.5 text-slate-400 hidden sm:table-cell">--</td>
       <td class="p-2 sm:p-2.5 text-slate-400 text-[11px]">--</td>
-      <td class="p-2 sm:p-2.5 pr-3 sm:pr-4 text-right sm:text-left"><span class="px-1.5 sm:px-2 py-0.5 rounded text-[10px] sm:text-[11px] font-bold bg-slate-100 text-slate-500">Scheduled</span></td>
+      <td class="p-2 sm:p-2.5 pr-3 sm:pr-4 text-right sm:text-left"><span class="px-1.5 sm:px-2 py-0.5 rounded text-[10px] sm:text-[11px] font-bold bg-slate-100 text-slate-500">${etaLabel}</span></td>
     `;
     tbody.appendChild(tr);
   });
