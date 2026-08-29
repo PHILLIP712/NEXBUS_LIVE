@@ -640,7 +640,7 @@ function closeLinesModal() {
 }
 
 // ==========================================
-// 5. UNIFIED NO-BACKTRACK TRANSIT DISCOVERY ENGINE
+// 5. BIDIRECTIONAL & ADJACENT STOP ROUTING ENGINE
 // ==========================================
 function findMatchingRoutes(pName, dName) {
   let pNorm = normalizeStr(pName);
@@ -652,32 +652,50 @@ function findMatchingRoutes(pName, dName) {
 
   const allRouteKeys = Object.keys(window.ROUTES_DATABASE);
 
-  // 1. Direct Routes Discovery
+  // 1. Direct Routes Discovery (Bidirectional: Forward and Return checks)
   for (const rKey of allRouteKeys) {
     const rObj = window.ROUTES_DATABASE[rKey];
     
-    // UP Direction
-    const pUp = rObj.forwardStops.findIndex(s => normalizeStr(s.name).includes(pNorm) || pNorm.includes(normalizeStr(s.name)) || (s.area && normalizeStr(s.area).includes(pNorm)));
-    const dUp = rObj.forwardStops.findIndex(s => normalizeStr(s.name).includes(dNorm) || dNorm.includes(normalizeStr(s.name)) || (s.area && normalizeStr(s.area).includes(dNorm)));
-    if (pUp !== -1 && dUp !== -1 && pUp < dUp) {
-      directMatches.push({ type: 'DIRECT', routeKey: rKey, direction: "UP", stops: rObj.forwardStops, pIdx: pUp, dIdx: dUp });
-      continue;
+    // Check Forward Stops (UP)
+    const fStops = rObj.forwardStops || [];
+    const pFwd = fStops.findIndex(s => normalizeStr(s.name).includes(pNorm) || pNorm.includes(normalizeStr(s.name)) || (s.area && normalizeStr(s.area).includes(pNorm)));
+    const dFwd = fStops.findIndex(s => normalizeStr(s.name).includes(dNorm) || dNorm.includes(normalizeStr(s.name)) || (s.area && normalizeStr(s.area).includes(dNorm)));
+    
+    if (pFwd !== -1 && dFwd !== -1) {
+      if (pFwd < dFwd) {
+        directMatches.push({ type: 'DIRECT', routeKey: rKey, direction: "UP", stops: fStops, pIdx: pFwd, dIdx: dFwd });
+        continue;
+      } else if (pFwd > dFwd) {
+        directMatches.push({ type: 'DIRECT', routeKey: rKey, direction: "DOWN_ALT", stops: fStops, pIdx: pFwd, dIdx: dFwd });
+        continue;
+      }
     }
 
-    // DOWN Direction
-    const pDown = rObj.returnStops.findIndex(s => normalizeStr(s.name).includes(pNorm) || pNorm.includes(normalizeStr(s.name)) || (s.area && normalizeStr(s.area).includes(pNorm)));
-    const dDown = rObj.returnStops.findIndex(s => normalizeStr(s.name).includes(dNorm) || dNorm.includes(normalizeStr(s.name)) || (s.area && normalizeStr(s.area).includes(dNorm)));
-    if (pDown !== -1 && dDown !== -1 && pDown < dDown) {
-      directMatches.push({ type: 'DIRECT', routeKey: rKey, direction: "DOWN", stops: rObj.returnStops, pIdx: pDown, dIdx: dDown });
+    // Check Return Stops (DOWN)
+    const rStops = rObj.returnStops || [];
+    const pRet = rStops.findIndex(s => normalizeStr(s.name).includes(pNorm) || pNorm.includes(normalizeStr(s.name)) || (s.area && normalizeStr(s.area).includes(pNorm)));
+    const dRet = rStops.findIndex(s => normalizeStr(s.name).includes(dNorm) || dNorm.includes(normalizeStr(s.name)) || (s.area && normalizeStr(s.area).includes(dNorm)));
+    
+    if (pRet !== -1 && dRet !== -1) {
+      if (pRet < dRet) {
+        directMatches.push({ type: 'DIRECT', routeKey: rKey, direction: "DOWN", stops: rStops, pIdx: pRet, dIdx: dRet });
+      } else if (pRet > dRet) {
+        directMatches.push({ type: 'DIRECT', routeKey: rKey, direction: "UP_ALT", stops: rStops, pIdx: pRet, dIdx: dRet });
+      }
     }
   }
 
-  // 2. 1-Transfer Discovery (Strict Anti-Backtracking)
+  // If direct matches exist, return them cleanly
+  if (directMatches.length > 0) {
+    return { direct: directMatches, transfers: [] };
+  }
+
+  // 2. 1-Transfer Discovery (Only when no direct line exists)
   for (const r1Key of allRouteKeys) {
     const r1 = window.ROUTES_DATABASE[r1Key];
     const directions1 = [
-      { dir: "UP", stops: r1.forwardStops },
-      { dir: "DOWN", stops: r1.returnStops }
+      { dir: "UP", stops: r1.forwardStops || [] },
+      { dir: "DOWN", stops: r1.returnStops || [] }
     ];
 
     for (const leg1 of directions1) {
@@ -690,8 +708,8 @@ function findMatchingRoutes(pName, dName) {
         if (r2Key === r1Key) continue;
         const r2 = window.ROUTES_DATABASE[r2Key];
         const directions2 = [
-          { dir: "UP", stops: r2.forwardStops },
-          { dir: "DOWN", stops: r2.returnStops }
+          { dir: "UP", stops: r2.forwardStops || [] },
+          { dir: "DOWN", stops: r2.returnStops || [] }
         ];
 
         for (const leg2 of directions2) {
@@ -710,12 +728,10 @@ function findMatchingRoutes(pName, dName) {
             if (t2Idx !== -1 && t2Idx < d2Idx) {
               const distPickupToDest = getDistanceMeters(pStop.lat, pStop.lng, dStop.lat, dStop.lng);
               const distTransferToDest = getDistanceMeters(transferStop.lat, transferStop.lng, dStop.lat, dStop.lng);
-              const distLeg1 = getDistanceMeters(pStop.lat, pStop.lng, transferStop.lat, transferStop.lng);
-              const distLeg2 = getDistanceMeters(transferStop.lat, transferStop.lng, dStop.lat, dStop.lng);
-              const totalTransferDist = distLeg1 + distLeg2;
+              const totalTransferDist = getDistanceMeters(pStop.lat, pStop.lng, transferStop.lat, transferStop.lng) + getDistanceMeters(transferStop.lat, transferStop.lng, dStop.lat, dStop.lng);
 
-              const makesForwardProgress = distTransferToDest < (distPickupToDest - 500);
-              const isReasonableTotalDist = totalTransferDist <= Math.max(distPickupToDest * 1.5, 6000);
+              const makesForwardProgress = distTransferToDest < (distPickupToDest - 200);
+              const isReasonableTotalDist = totalTransferDist <= Math.max(distPickupToDest * 1.6, 6000);
 
               if (makesForwardProgress && isReasonableTotalDist) {
                 commonStops.push({
@@ -723,7 +739,6 @@ function findMatchingRoutes(pName, dName) {
                   tIdx: tIdx,
                   t2Idx: t2Idx,
                   totalDist: totalTransferDist,
-                  leg1StopsCount: tIdx - pIdx,
                   distTransferToDest: distTransferToDest
                 });
               }
@@ -731,7 +746,7 @@ function findMatchingRoutes(pName, dName) {
           }
 
           if (commonStops.length > 0) {
-            commonStops.sort((a, b) => a.distTransferToDest - b.distTransferToDest || a.totalDist - b.totalDist);
+            commonStops.sort((a, b) => a.distTransferToDest - b.distTransferToDest);
             const bestTransfer = commonStops[0];
 
             const liveLeg1Buses = Object.values(activeBuses).filter(b => {
@@ -741,20 +756,11 @@ function findMatchingRoutes(pName, dName) {
               return bIdx <= pIdx;
             });
 
-            const liveLeg2Buses = Object.values(activeBuses).filter(b => {
-              const isLine = normalizeStr(b.routeKey || b.route).includes(normalizeStr(r2Key));
-              if (!isLine || b.busDir !== leg2.dir) return false;
-              const bIdx = findBusNearestStopIndex(b.lat, b.lng, leg2.stops);
-              return bIdx <= bestTransfer.t2Idx;
-            });
-
             rawTransfers.push({
               type: 'TRANSFER',
               transferStopName: bestTransfer.transferStopName,
               totalDist: bestTransfer.totalDist,
-              leg1StopsCount: bestTransfer.leg1StopsCount,
               hasLiveLeg1: liveLeg1Buses.length > 0,
-              hasLiveLeg2: liveLeg2Buses.length > 0,
               leg1: {
                 routeKey: r1Key,
                 direction: leg1.dir,
@@ -780,7 +786,6 @@ function findMatchingRoutes(pName, dName) {
     }
   }
 
-  // Deduplicate transfer combinations
   const uniqueTransfersMap = new Map();
   rawTransfers.forEach(plan => {
     const key = `${normalizeStr(plan.leg1.routeKey)}_${normalizeStr(plan.leg2.routeKey)}_${normalizeStr(plan.transferStopName)}`;
@@ -790,14 +795,9 @@ function findMatchingRoutes(pName, dName) {
   });
 
   const candidateTransfers = Array.from(uniqueTransfersMap.values());
-  candidateTransfers.sort((a, b) => {
-    const liveScoreA = (a.hasLiveLeg1 ? 2 : 0) + (a.hasLiveLeg2 ? 1 : 0);
-    const liveScoreB = (b.hasLiveLeg1 ? 2 : 0) + (b.hasLiveLeg2 ? 1 : 0);
-    return liveScoreB - liveScoreA || a.totalDist - b.totalDist;
-  });
+  candidateTransfers.sort((a, b) => (b.hasLiveLeg1 ? 2 : 0) - (a.hasLiveLeg1 ? 2 : 0) || a.totalDist - b.totalDist);
 
-  const topTransfers = candidateTransfers.slice(0, 2);
-  return { direct: directMatches, transfers: topTransfers };
+  return { direct: [], transfers: candidateTransfers.slice(0, 2) };
 }
 
 function handleSearchClick() {
@@ -1713,7 +1713,7 @@ function updateAvailableBusesList() {
     container.scrollTop = previousScrollTop;
   }
 
-  lucide.createIcons();
+    lucide.createIcons();
 }
 
 function selectBus(plate) {
