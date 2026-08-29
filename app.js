@@ -23,10 +23,61 @@ let activeTransferPlan = null;
 let currentTripPlanType = "DIRECT"; // "DIRECT" or "TRANSFER"
 let lastSearchResult = null;
 let hasAutoScrolledForCurrentTrip = false;
+let currentMobileTab = "buses"; // "buses" or "schedule"
 
 const activeBuses = {};
 const activeBusMarkers = {};
 let selectedBusPlate = null;
+
+// ==========================================
+// MOBILE VIEW TAB SWITCHER
+// ==========================================
+function switchMobileTab(tab) {
+  currentMobileTab = tab;
+  const busesCol = document.getElementById("busesListContainer");
+  const scheduleCol = document.getElementById("scheduleColumn");
+  const tabBusesBtn = document.getElementById("tabBusesBtn");
+  const tabScheduleBtn = document.getElementById("tabScheduleBtn");
+
+  if (window.innerWidth < 768) {
+    if (tab === 'schedule') {
+      busesCol.classList.add('hidden');
+      scheduleCol.classList.remove('hidden');
+      scheduleCol.classList.add('flex');
+      if (tabScheduleBtn && tabBusesBtn) {
+        tabScheduleBtn.className = "flex-1 py-1.5 text-xs font-bold rounded-xl bg-white text-slate-900 shadow-sm transition-all flex items-center justify-center gap-1.5";
+        tabBusesBtn.className = "flex-1 py-1.5 text-xs font-bold rounded-xl text-slate-500 hover:text-slate-800 transition-all flex items-center justify-center gap-1.5";
+      }
+    } else {
+      busesCol.classList.remove('hidden');
+      scheduleCol.classList.add('hidden');
+      scheduleCol.classList.remove('flex');
+      if (tabScheduleBtn && tabBusesBtn) {
+        tabBusesBtn.className = "flex-1 py-1.5 text-xs font-bold rounded-xl bg-white text-slate-900 shadow-sm transition-all flex items-center justify-center gap-1.5";
+        tabScheduleBtn.className = "flex-1 py-1.5 text-xs font-bold rounded-xl text-slate-500 hover:text-slate-800 transition-all flex items-center justify-center gap-1.5";
+      }
+    }
+  } else {
+    // Desktop reset
+    busesCol.classList.remove('hidden');
+    scheduleCol.classList.remove('hidden');
+    scheduleCol.classList.add('flex');
+  }
+  lucide.createIcons();
+}
+
+window.addEventListener('resize', () => {
+  if (window.innerWidth >= 768) {
+    document.getElementById("busesListContainer")?.classList.remove('hidden');
+    const scheduleCol = document.getElementById("scheduleColumn");
+    if (scheduleCol) {
+      scheduleCol.classList.remove('hidden');
+      scheduleCol.classList.add('flex');
+    }
+  } else {
+    switchMobileTab(currentMobileTab);
+  }
+});
 
 // ==========================================
 // 2. LEAFLET MAP SETUP & DYNAMIC ROTATING MARKERS
@@ -61,7 +112,7 @@ function createDynamicBusMapIcon(routeString, busPlate, heading = 0, destTermina
     className: '',
     html: `
       <div class="bus-marker-wrapper flex flex-col items-center">
-        <!-- Top Route & Destination Tag -->
+        <!-- Top Route Tag -->
         <div class="bus-tag-top whitespace-nowrap px-2 py-0.5 rounded shadow text-[10px] font-extrabold bg-sky-600 text-white flex items-center gap-1">
           <span>${tagLabel}</span>
         </div>
@@ -106,9 +157,9 @@ function createPinIcon(type) {
     size = 16;
     border = "3px solid #fff; box-shadow: 0 0 10px #f59e0b;";
   } else if (type === "transfer") {
-    color = "#3b82f6";
+    color = "#8b5cf6";
     size = 16;
-    border = "3px solid #fff; box-shadow: 0 0 12px #3b82f6;";
+    border = "3px solid #fff; box-shadow: 0 0 12px #8b5cf6;";
   } else if (type === "dest") {
     color = "#ef4444";
     size = 18;
@@ -225,7 +276,6 @@ function calculateTripSummary(pickupStop, destStop, stopsList, effectiveSpeedKmp
   };
 }
 
-// Check if any live bus is currently running on a specific leg
 function checkLegLiveAvailability(routeKey, direction, maxStopIdx, stops) {
   if (!stops || stops.length === 0) return false;
   return Object.values(activeBuses).some(b => {
@@ -238,7 +288,7 @@ function checkLegLiveAvailability(routeKey, direction, maxStopIdx, stops) {
 }
 
 // ==========================================
-// ROBUST JITTER-PROOF DIRECTION STABILIZER
+// ROBUST DIRECTION STABILIZER
 // ==========================================
 function updateBusDirectionFromMovement(busPlate, newLat, newLng, newHeading, newSpeedKmph, payloadDir, routeConfig) {
   if (payloadDir && (payloadDir.toUpperCase() === "UP" || payloadDir.toUpperCase() === "DOWN")) {
@@ -288,7 +338,7 @@ function scrollTableToActiveRow(force = false) {
   if (hasAutoScrolledForCurrentTrip && !force) return;
 
   setTimeout(() => {
-    const tableContainer = document.querySelector("#bottomSheet .overflow-y-auto");
+    const tableContainer = document.querySelector("#scheduleContentArea");
     const activeRow = document.querySelector(".active-target-stop");
     if (tableContainer && activeRow) {
       const topOffset = activeRow.offsetTop - tableContainer.offsetTop - 50;
@@ -335,12 +385,12 @@ function setupStopAutocomplete(inputId, dropdownId, type) {
       const iconColor = type === 'pickup' ? 'text-emerald-500 bg-emerald-50' : 'text-indigo-500 bg-indigo-50';
 
       li.innerHTML = `
-        <div class="w-8 h-8 rounded-lg ${iconColor} flex items-center justify-center shrink-0">
-          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
+        <div class="w-7 h-7 rounded-lg ${iconColor} flex items-center justify-center shrink-0">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
         </div>
         <div class="min-w-0">
-          <div class="text-sm font-semibold text-slate-800 truncate">${stop.name}</div>
-          <div class="text-xs text-slate-400 truncate">${stop.area || 'Bus Stop'}</div>
+          <div class="text-xs sm:text-sm font-semibold text-slate-800 truncate">${stop.name}</div>
+          <div class="text-[10px] sm:text-xs text-slate-400 truncate">${stop.area || 'Bus Stop'}</div>
         </div>
       `;
 
@@ -461,10 +511,10 @@ function updateDirectionBannerText() {
     const r2Name = window.ROUTES_DATABASE[activeTransferPlan.leg2.routeKey]?.name || "Bus 2";
     labelElem.innerHTML = `
       <div class="flex items-center gap-1.5 flex-wrap">
-        <span class="bg-amber-100 text-amber-800 px-2 py-0.5 rounded text-[10px] font-extrabold shrink-0">1 TRANSFER</span>
+        <span class="bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded text-[9px] font-extrabold shrink-0">1 TRANSFER</span>
         <span class="text-slate-900 font-bold">${r1Name}</span>
         <span class="text-slate-400">➔</span>
-        <span class="text-sky-800 font-bold">Change at ${activeTransferPlan.transferStopName}</span>
+        <span class="text-sky-800 font-bold truncate">Change at ${activeTransferPlan.transferStopName}</span>
         <span class="text-slate-400">➔</span>
         <span class="text-slate-900 font-bold">${r2Name}</span>
       </div>
@@ -477,11 +527,11 @@ function updateDirectionBannerText() {
     const totalLines = activeMatchingRoutes.length;
     labelElem.innerHTML = `
       <div class="flex items-center gap-1.5 flex-wrap">
-        <button onclick="openLinesModal()" class="bg-sky-100 hover:bg-sky-200 active:scale-95 text-sky-800 px-2.5 py-0.5 rounded-lg text-[10px] font-extrabold shrink-0 flex items-center gap-1 border border-sky-200 transition-all cursor-pointer shadow-sm">
-          <span>${totalLines} LINES AVAILABLE</span>
+        <button onclick="openLinesModal()" class="bg-sky-100 hover:bg-sky-200 active:scale-95 text-sky-800 px-2 py-0.5 rounded-lg text-[9px] font-extrabold shrink-0 flex items-center gap-1 border border-sky-200 transition-all cursor-pointer shadow-sm">
+          <span>${totalLines} LINES</span>
           <i data-lucide="chevron-right" class="w-3 h-3"></i>
         </button>
-        <div class="flex items-center gap-1 text-xs font-bold text-slate-800">
+        <div class="flex items-center gap-1 text-xs font-bold text-slate-800 truncate">
           <span>${selectedPickupStop.name}</span>
           <span class="text-emerald-600 font-bold">➔</span>
           <span>${selectedDestStop.name}</span>
@@ -540,10 +590,10 @@ function openLinesModal() {
       : (config.forwardStops || []).length;
 
     const card = document.createElement("div");
-    card.className = "p-3 rounded-2xl border border-slate-200/80 bg-slate-50/60 flex items-center justify-between hover:border-emerald-500 transition-all";
+    card.className = "p-2.5 sm:p-3 rounded-2xl border border-slate-200/80 bg-slate-50/60 flex items-center justify-between hover:border-emerald-500 transition-all";
     card.innerHTML = `
-      <div class="flex items-center gap-3">
-        <div class="px-2.5 py-1.5 rounded-xl bg-emerald-100/80 text-emerald-800 font-extrabold text-xs shrink-0 border border-emerald-200/60 min-w-[55px] text-center">
+      <div class="flex items-center gap-2.5 sm:gap-3">
+        <div class="px-2 py-1 rounded-xl bg-emerald-100/80 text-emerald-800 font-extrabold text-xs shrink-0 border border-emerald-200/60 min-w-[50px] text-center">
           ${config.name}
         </div>
         <div>
@@ -573,7 +623,7 @@ function closeLinesModal() {
 }
 
 // ==========================================
-// UNIVERSAL GEOMETRIC & DIRECTIONAL ENGINE
+// UNIVERSAL GEOMETRIC ENGINE
 // ==========================================
 function findMatchingRoutes(pName, dName) {
   let pNorm = normalizeStr(pName);
@@ -585,7 +635,7 @@ function findMatchingRoutes(pName, dName) {
 
   const allRouteKeys = Object.keys(window.ROUTES_DATABASE);
 
-  // 1. Direct Route Discovery
+  // 1. Direct Routes
   for (const rKey of allRouteKeys) {
     const rObj = window.ROUTES_DATABASE[rKey];
     
@@ -605,11 +655,7 @@ function findMatchingRoutes(pName, dName) {
     }
   }
 
-  if (directMatches.length > 0) {
-    return { direct: directMatches, transfers: [] };
-  }
-
-  // 2. 1-Transfer Route Discovery
+  // 2. 1-Transfer Routes
   for (const r1Key of allRouteKeys) {
     const r1 = window.ROUTES_DATABASE[r1Key];
     const directions1 = [
@@ -740,21 +786,38 @@ function handleSearchClick() {
   }
 
   lastSearchResult = findMatchingRoutes(pickVal, destVal);
-
   busNearestStopIdx = 0;
   selectedBusPlate = null;
 
-  if (lastSearchResult.direct.length > 0) {
+  const hasDirect = lastSearchResult.direct.length > 0;
+  const hasTransfers = lastSearchResult.transfers.length > 0;
+
+  if (!hasDirect && !hasTransfers) {
+    alert("No direct or connecting route found between these locations in this direction.");
+    return;
+  }
+
+  const hasLiveDirect = hasDirect && lastSearchResult.direct.some(d => {
+    return Object.values(activeBuses).some(b => {
+      const isLine = normalizeStr(b.routeKey || b.route).includes(normalizeStr(d.routeKey));
+      const isDir = (b.busDir === d.direction);
+      if (!isLine || !isDir) return false;
+      const bIdx = findBusNearestStopIndex(b.lat, b.lng, d.stops);
+      return bIdx <= d.pIdx;
+    });
+  });
+
+  const hasLiveTransfer = hasTransfers && lastSearchResult.transfers.some(t => t.hasLiveLeg1);
+
+  if (hasLiveDirect) {
     selectDirectOption(0, false);
-    return;
-  }
-
-  if (lastSearchResult.transfers.length > 0) {
+  } else if (hasLiveTransfer) {
     selectTransferOption(0, false);
-    return;
+  } else if (hasDirect) {
+    selectDirectOption(0, false);
+  } else {
+    selectTransferOption(0, false);
   }
-
-  alert("No direct or connecting route found between these locations in this direction.");
 }
 
 function selectDirectOption(index = 0, maintainTracking = false) {
@@ -787,15 +850,21 @@ function selectDirectOption(index = 0, maintainTracking = false) {
 
   if (upcomingBuses.length > 0) {
     selectedBusPlate = upcomingBuses[0].plate;
-    const b = upcomingBuses[0];
-    updateStopsTable(b.lat, b.lng, b.spd);
   } else {
     selectedBusPlate = null;
-    renderSchedulePreview();
   }
 
   if (isTrackingConfirmed) {
     renderRoutePins(true);
+    if (selectedBusPlate && activeBuses[selectedBusPlate]) {
+      const b = activeBuses[selectedBusPlate];
+      updateStopsTable(b.lat, b.lng, b.spd);
+    } else {
+      renderSchedulePreview();
+    }
+  } else {
+    document.getElementById("stopsTable").classList.add("hidden");
+    document.getElementById("noTrackPlaceholder").classList.remove("hidden");
   }
 
   updateAvailableBusesList();
@@ -830,15 +899,21 @@ function selectTransferOption(index = 0, maintainTracking = false) {
 
   if (upcomingLeg1Buses.length > 0) {
     selectedBusPlate = upcomingLeg1Buses[0].plate;
-    const b = upcomingLeg1Buses[0];
-    updateStopsTable(b.lat, b.lng, b.spd);
   } else {
     selectedBusPlate = null;
-    renderSchedulePreview();
   }
 
   if (isTrackingConfirmed) {
     renderRoutePins(true);
+    if (selectedBusPlate && activeBuses[selectedBusPlate]) {
+      const b = activeBuses[selectedBusPlate];
+      updateStopsTable(b.lat, b.lng, b.spd);
+    } else {
+      renderSchedulePreview();
+    }
+  } else {
+    document.getElementById("stopsTable").classList.add("hidden");
+    document.getElementById("noTrackPlaceholder").classList.remove("hidden");
   }
 
   updateAvailableBusesList();
@@ -875,18 +950,10 @@ function updateTripSummaryUI() {
     const approachingCount = (busNearestStopIdx > 0 && busNearestStopIdx < pIdx) ? (pIdx - busNearestStopIdx) : 0;
     
     if (approachingCount > 0) {
-      document.getElementById("journeyStopsCount").innerText = `(${summary.totalStops} stops ride • ${approachingCount} incoming)`;
+      document.getElementById("journeyStopsCount").innerText = `(${summary.totalStops} stops • ${approachingCount} incoming)`;
     } else {
       document.getElementById("journeyStopsCount").innerText = `(${summary.totalStops} stops)`;
     }
-  }
-}
-
-function toggleTrackingAction() {
-  if (isTrackingConfirmed) {
-    cancelTracking();
-  } else {
-    startTracking();
   }
 }
 
@@ -913,10 +980,8 @@ function startTracking() {
 
   isTrackingConfirmed = true;
   
-  const btn = document.getElementById("btnTrackAction");
-  btn.className = "bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs px-4 py-2 rounded-xl shadow-md shadow-rose-600/20 transition-all flex items-center gap-1.5 active:scale-95";
-  btn.innerHTML = `<i data-lucide="x" class="w-3.5 h-3.5"></i><span id="btnTrackActionText">Cancel Track</span>`;
-  lucide.createIcons();
+  document.getElementById("stopsTable").classList.remove("hidden");
+  document.getElementById("noTrackPlaceholder").classList.add("hidden");
 
   updateDirectionBannerText();
   document.getElementById("activeTripBar").classList.remove("hidden");
@@ -924,30 +989,48 @@ function startTracking() {
   renderRoutePins(true);
   updateAvailableBusesList();
 
+  // On mobile screens, automatically slide to the Stop Schedule view
+  if (window.innerWidth < 768) {
+    switchMobileTab('schedule');
+  }
+
   if (selectedBusPlate && activeBuses[selectedBusPlate]) {
     const b = activeBuses[selectedBusPlate];
     updateStopsTable(b.lat, b.lng, b.spd);
+  } else {
+    renderSchedulePreview();
   }
 }
 
 function cancelTracking() {
   isTrackingConfirmed = false;
-  
-  const btn = document.getElementById("btnTrackAction");
-  btn.className = "bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-4 py-2 rounded-xl shadow-md shadow-emerald-600/20 transition-all flex items-center gap-1.5 active:scale-95";
-  btn.innerHTML = `<i data-lucide="check" class="w-3.5 h-3.5"></i><span id="btnTrackActionText">Confirm Route & Track</span>`;
-  lucide.createIcons();
+
+  document.getElementById("stopsTable").classList.add("hidden");
+  document.getElementById("noTrackPlaceholder").classList.remove("hidden");
 
   document.getElementById("activeTripBar").classList.add("hidden");
   document.getElementById("floatingBusCard").classList.add("hidden");
   document.getElementById("tripStatsPill").classList.add("hidden");
   
   renderRoutePins(false);
-  renderSchedulePreview();
   updateAvailableBusesList();
+
+  // On mobile screens, return back to the Buses list view
+  if (window.innerWidth < 768) {
+    switchMobileTab('buses');
+  }
 }
 
 function renderSchedulePreview() {
+  if (!isTrackingConfirmed) {
+    document.getElementById("stopsTable").classList.add("hidden");
+    document.getElementById("noTrackPlaceholder").classList.remove("hidden");
+    return;
+  }
+
+  document.getElementById("stopsTable").classList.remove("hidden");
+  document.getElementById("noTrackPlaceholder").classList.add("hidden");
+
   const tbody = document.getElementById("stopsTableBody");
   tbody.innerHTML = "";
 
@@ -970,11 +1053,11 @@ function renderSchedulePreview() {
       const tr = document.createElement("tr");
       if (rowClass) tr.className = rowClass;
       tr.innerHTML = `
-        <td class="p-2.5 pl-4">${stepNum++}</td>
-        <td class="p-2.5 font-semibold text-slate-800">${stop.name} <span class="text-[10px] text-sky-700 font-bold">(${r1Name})</span></td>
-        <td class="p-2.5 text-slate-400">--</td>
-        <td class="p-2.5 text-slate-500">${isBoarding ? "Board First Bus" : (isTransferPoint ? "Alight for Transfer" : "Ride")}</td>
-        <td class="p-2.5 pr-4"><span class="px-2 py-0.5 rounded text-[11px] font-bold bg-slate-100 text-slate-500">Scheduled</span></td>
+        <td class="p-2 sm:p-2.5 pl-3 sm:pl-4">${stepNum++}</td>
+        <td class="p-2 sm:p-2.5 font-semibold text-slate-800">${stop.name} <span class="text-[9px] text-sky-700 font-bold">(${r1Name})</span></td>
+        <td class="p-2 sm:p-2.5 text-slate-400 hidden sm:table-cell">--</td>
+        <td class="p-2 sm:p-2.5 text-slate-500 text-[11px]">${isBoarding ? "Board First Bus" : (isTransferPoint ? "Alight for Transfer" : "Ride")}</td>
+        <td class="p-2 sm:p-2.5 pr-3 sm:pr-4 text-right sm:text-left"><span class="px-1.5 sm:px-2 py-0.5 rounded text-[10px] sm:text-[11px] font-bold bg-slate-100 text-slate-500">Scheduled</span></td>
       `;
       tbody.appendChild(tr);
     });
@@ -982,8 +1065,8 @@ function renderSchedulePreview() {
     const transferTr = document.createElement("tr");
     transferTr.className = "bg-amber-100/70 font-extrabold text-amber-900";
     transferTr.innerHTML = `
-      <td class="p-2 pl-4 text-center">🔄</td>
-      <td colspan="4" class="p-2 text-xs">Switch to <span class="underline decoration-amber-600 font-black">${r2Name}</span> towards ${selectedDestStop.name}</td>
+      <td class="p-1.5 pl-3 sm:pl-4 text-center">🔄</td>
+      <td colspan="4" class="p-1.5 text-xs">Switch to <span class="underline decoration-amber-600 font-black">${r2Name}</span> towards ${selectedDestStop.name}</td>
     `;
     tbody.appendChild(transferTr);
 
@@ -994,11 +1077,11 @@ function renderSchedulePreview() {
       const tr = document.createElement("tr");
       if (rowClass) tr.className = rowClass;
       tr.innerHTML = `
-        <td class="p-2.5 pl-4">${stepNum++}</td>
-        <td class="p-2.5 font-semibold text-slate-800">${stop.name} <span class="text-[10px] text-amber-700 font-bold">(${r2Name})</span></td>
-        <td class="p-2.5 text-slate-400">--</td>
-        <td class="p-2.5 text-slate-500">${isFinal ? "🏁 Final Destination" : "Connecting Ride"}</td>
-        <td class="p-2.5 pr-4"><span class="px-2 py-0.5 rounded text-[11px] font-bold bg-slate-100 text-slate-500">Scheduled</span></td>
+        <td class="p-2 sm:p-2.5 pl-3 sm:pl-4">${stepNum++}</td>
+        <td class="p-2 sm:p-2.5 font-semibold text-slate-800">${stop.name} <span class="text-[9px] text-amber-700 font-bold">(${r2Name})</span></td>
+        <td class="p-2 sm:p-2.5 text-slate-400 hidden sm:table-cell">--</td>
+        <td class="p-2 sm:p-2.5 text-slate-500 text-[11px]">${isFinal ? "🏁 Final Destination" : "Connecting Ride"}</td>
+        <td class="p-2 sm:p-2.5 pr-3 sm:pr-4 text-right sm:text-left"><span class="px-1.5 sm:px-2 py-0.5 rounded text-[10px] sm:text-[11px] font-bold bg-slate-100 text-slate-500">Scheduled</span></td>
       `;
       tbody.appendChild(tr);
     });
@@ -1023,11 +1106,11 @@ function renderSchedulePreview() {
     const tr = document.createElement("tr");
     if (rowClass) tr.className = rowClass;
     tr.innerHTML = `
-      <td class="p-2.5 pl-4">${idx + 1}</td>
-      <td class="p-2.5 font-medium">${stop.name}</td>
-      <td class="p-2.5 text-slate-400">--</td>
-      <td class="p-2.5 text-slate-400">--</td>
-      <td class="p-2.5 pr-4"><span class="px-2 py-0.5 rounded text-[11px] font-bold bg-slate-100 text-slate-500">Scheduled</span></td>
+      <td class="p-2 sm:p-2.5 pl-3 sm:pl-4">${idx + 1}</td>
+      <td class="p-2 sm:p-2.5 font-medium">${stop.name}</td>
+      <td class="p-2 sm:p-2.5 text-slate-400 hidden sm:table-cell">--</td>
+      <td class="p-2 sm:p-2.5 text-slate-400 text-[11px]">--</td>
+      <td class="p-2 sm:p-2.5 pr-3 sm:pr-4 text-right sm:text-left"><span class="px-1.5 sm:px-2 py-0.5 rounded text-[10px] sm:text-[11px] font-bold bg-slate-100 text-slate-500">Scheduled</span></td>
     `;
     tbody.appendChild(tr);
   });
@@ -1046,9 +1129,7 @@ function renderRoutePins(autoFit = false) {
 
   const activeBus = (selectedBusPlate && activeBuses[selectedBusPlate]) ? activeBuses[selectedBusPlate] : null;
 
-  // =======================================================
-  // 1-TRANSFER DYNAMIC SOLID / DASHED POLYLINE RENDERING
-  // =======================================================
+  // 1-TRANSFER POLYLINE RENDERING
   if (currentTripPlanType === "TRANSFER" && activeTransferPlan) {
     const pIdx = activeTransferPlan.leg1.pIdx;
     const tIdx = activeTransferPlan.leg1.tIdx;
@@ -1073,7 +1154,6 @@ function renderRoutePins(autoFit = false) {
       }
     }
 
-    // Check live availability for Leg 1 and Leg 2
     const hasLiveLeg1 = checkLegLiveAvailability(
       activeTransferPlan.leg1.routeKey,
       activeTransferPlan.leg1.direction,
@@ -1091,7 +1171,6 @@ function renderRoutePins(autoFit = false) {
     const leg1Stops = activeTransferPlan.leg1.stops.slice(pIdx, tIdx + 1);
     const leg1Points = leg1Stops.map(s => [s.lat, s.lng]);
 
-    // Leg 1: Solid green when live; dashed when scheduled/offline
     leg1PolylineLayer = L.polyline(leg1Points, hasLiveLeg1 ? {
       color: '#059669',
       weight: 6,
@@ -1106,9 +1185,8 @@ function renderRoutePins(autoFit = false) {
     const leg2Stops = activeTransferPlan.leg2.stops.slice(t2Idx, d2Idx + 1);
     const leg2Points = leg2Stops.map(s => [s.lat, s.lng]);
 
-    // Leg 2: Solid indigo when live; dashed indigo/slate when scheduled/offline
     leg2PolylineLayer = L.polyline(leg2Points, hasLiveLeg2 ? {
-      color: '#4f46e5',
+      color: '#7c3aed',
       weight: 6,
       opacity: 0.95
     } : {
@@ -1121,7 +1199,7 @@ function renderRoutePins(autoFit = false) {
     if (autoFit) {
       const allPoints = [...approachPoints, ...leg1Points, ...leg2Points];
       if (allPoints.length >= 2) {
-        map.fitBounds(L.polyline(allPoints).getBounds(), { padding: [50, 50] });
+        map.fitBounds(L.polyline(allPoints).getBounds(), { padding: [40, 40] });
       }
     }
 
@@ -1150,9 +1228,7 @@ function renderRoutePins(autoFit = false) {
     return;
   }
 
-  // =======================================================
-  // DIRECT ROUTE DYNAMIC SOLID / DASHED POLYLINE RENDERING
-  // =======================================================
+  // DIRECT ROUTE POLYLINE RENDERING
   const pIdx = currentStopsList.findIndex(s => normalizeStr(s.name) === normalizeStr(selectedPickupStop.name));
   const dIdx = currentStopsList.findIndex(s => normalizeStr(s.name) === normalizeStr(selectedDestStop.name));
 
@@ -1176,7 +1252,6 @@ function renderRoutePins(autoFit = false) {
     }
   }
 
-  // Check if any live bus is available on this direct corridor
   const hasLiveDirectBus = Object.values(activeBuses).some(b => {
     const isLine = normalizeStr(b.routeKey || b.route).includes(normalizeStr(activeRouteKey));
     const isDir = (b.busDir === currentDirection);
@@ -1188,7 +1263,6 @@ function renderRoutePins(autoFit = false) {
   const rideStops = currentStopsList.slice(pIdx, dIdx + 1);
   const ridePoints = rideStops.map(s => [s.lat, s.lng]);
 
-  // Solid green when live bus is active; distinct dashed slate/blue when scheduled only
   routePolylineLayer = L.polyline(ridePoints, hasLiveDirectBus ? {
     color: '#059669',
     weight: 6,
@@ -1203,7 +1277,7 @@ function renderRoutePins(autoFit = false) {
   if (autoFit) {
     const allPoints = [...approachPoints, ...ridePoints];
     if (allPoints.length >= 2) {
-      map.fitBounds(L.polyline(allPoints).getBounds(), { padding: [50, 50] });
+      map.fitBounds(L.polyline(allPoints).getBounds(), { padding: [40, 40] });
     }
   }
 
@@ -1239,6 +1313,7 @@ function updateAvailableBusesList() {
   if (!container) return;
   container.innerHTML = "";
 
+  // 1-TRANSFER OPTION CARDS
   if (currentTripPlanType === "TRANSFER" && activeTransferPlan) {
     const transferOptions = (lastSearchResult && lastSearchResult.transfers) ? lastSearchResult.transfers : [activeTransferPlan];
 
@@ -1276,7 +1351,7 @@ function updateAvailableBusesList() {
           document.getElementById('floatBusPlate').innerHTML = `
             <div class="flex items-center gap-1.5 flex-nowrap">
               <span class="font-bold text-slate-900">${liveBus.plate}</span>
-              <span class="text-[10px] font-extrabold text-amber-800 bg-amber-100/90 px-2 py-0.5 rounded border border-amber-200 whitespace-nowrap flex items-center gap-1">
+              <span class="text-[10px] font-extrabold text-violet-800 bg-violet-100/90 px-1.5 py-0.2 rounded border border-violet-200 whitespace-nowrap flex items-center gap-1">
                 <span>➔</span>
                 <span>1-Transfer</span>
               </span>
@@ -1295,21 +1370,29 @@ function updateAvailableBusesList() {
         : Infinity;
       const etaStr = etaSec !== Infinity ? formatEtaTime(etaSec) : "Scheduled";
 
+      const isCurrentlyTracked = isTrackingConfirmed && isSelectedPlan;
+
+      const btnBg = isUpcomingLive 
+        ? "bg-violet-600 hover:bg-violet-700 shadow-violet-600/20" 
+        : "bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/20";
+      const btnText = isUpcomingLive ? "Track this bus & route" : "Track this route";
+      const btnIcon = isUpcomingLive ? "bus" : "git-merge";
+
       const card = document.createElement("div");
-      card.className = `bg-white border ${isSelectedPlan ? 'border-indigo-500 ring-2 ring-indigo-500/10' : 'border-slate-200'} hover:border-indigo-500 rounded-2xl p-3.5 shadow-sm transition-all duration-200 hover:shadow-md cursor-pointer mb-2.5`;
+      card.className = `bg-white border ${isSelectedPlan ? (isUpcomingLive ? 'border-violet-500 ring-2 ring-violet-500/10' : 'border-indigo-500 ring-2 ring-indigo-500/10') : 'border-slate-200'} hover:border-violet-500 rounded-2xl p-3 shadow-sm transition-all duration-200 hover:shadow-md cursor-pointer mb-2.5`;
       card.onclick = () => {
-        selectTransferOption(planIdx, false);
+        selectTransferOption(planIdx, isCurrentlyTracked);
       };
 
       card.innerHTML = `
         <div class="flex items-center justify-between pb-2 border-b border-slate-100">
           <div>
             ${planIdx === 0 ? `
-              <span class="inline-flex items-center gap-1 bg-indigo-600 text-white text-[10px] font-extrabold px-2 py-0.5 rounded-md shadow-sm">
+              <span class="inline-flex items-center gap-1 ${isUpcomingLive ? 'bg-violet-600' : 'bg-indigo-600'} text-white text-[9px] sm:text-[10px] font-extrabold px-2 py-0.5 rounded-md shadow-sm">
                 ★ Best Transfer
               </span>
             ` : `
-              <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Alternate Transfer</span>
+              <span class="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider">Alternate</span>
             `}
           </div>
           <span class="inline-flex items-center gap-1.5 text-[11px] font-bold ${isUpcomingLive ? 'text-emerald-600' : 'text-slate-400'}">
@@ -1320,14 +1403,14 @@ function updateAvailableBusesList() {
 
         <div class="mt-2.5">
           <div class="flex items-baseline justify-between gap-2">
-            <div class="text-lg font-black text-indigo-600 tracking-tight flex items-center gap-1.5 flex-wrap">
+            <div class="text-base sm:text-lg font-black ${isUpcomingLive ? 'text-violet-700' : 'text-indigo-600'} tracking-tight flex items-center gap-1.5 flex-wrap">
               <span>${r1Name}</span>
               <span class="text-xs text-slate-400 font-normal">➔</span>
               <span>${r2Name}</span>
             </div>
             <div class="text-right shrink-0">
-              <div class="text-base font-black ${isUpcomingLive ? 'text-emerald-600' : 'text-slate-700'} leading-tight">${etaStr}</div>
-              <div class="text-[10px] text-slate-400">${isUpcomingLive ? 'to pickup' : 'Timetable'}</div>
+              <div class="text-sm sm:text-base font-black ${isUpcomingLive ? 'text-emerald-600' : 'text-slate-700'} leading-tight">${etaStr}</div>
+              <div class="text-[9px] sm:text-[10px] text-slate-400">${isUpcomingLive ? 'to pickup' : 'Timetable'}</div>
             </div>
           </div>
 
@@ -1336,14 +1419,14 @@ function updateAvailableBusesList() {
             <span class="text-slate-400 font-normal">➔</span> 
             ${selectedDestStop ? selectedDestStop.name : 'Destination'}
           </div>
-          <div class="text-[10px] text-amber-800 font-semibold mt-0.5 flex items-center gap-1">
-            <span>🔄 Change at:</span>
-            <span class="underline">${plan.transferStopName}</span>
-            <span class="text-slate-400 font-normal">(${totalStops} stops total)</span>
+          <div class="text-[10px] text-amber-800 font-semibold mt-0.5 flex items-center gap-1 truncate">
+            <span>🔄 Change:</span>
+            <span class="underline truncate">${plan.transferStopName}</span>
+            <span class="text-slate-400 font-normal shrink-0">(${totalStops} stops)</span>
           </div>
         </div>
 
-        <div class="flex items-center justify-between text-[11px] font-medium text-slate-500 mt-2.5 pt-2 border-t border-slate-100">
+        <div class="flex items-center justify-between text-[10px] sm:text-[11px] font-medium text-slate-500 mt-2.5 pt-2 border-t border-slate-100">
           <span class="font-mono font-bold text-slate-700">${liveBus ? liveBus.plate : 'Timetable'}</span>
           <span class="flex items-center gap-1">
             <i data-lucide="radio" class="w-3 h-3 text-slate-400"></i> ${isUpcomingLive ? 'Connecting' : 'Regular'}
@@ -1353,11 +1436,18 @@ function updateAvailableBusesList() {
           </span>
         </div>
 
-        <div class="mt-3">
-          <button onclick="event.stopPropagation(); selectTransferOption(${planIdx}, false); startTracking();" class="w-full bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] text-white font-bold text-xs py-2 px-4 rounded-xl shadow-md shadow-indigo-600/20 flex items-center justify-center gap-2 transition-all">
-            <i data-lucide="git-merge" class="w-3.5 h-3.5"></i>
-            <span>Track this route</span>
-          </button>
+        <div class="mt-2.5">
+          ${isCurrentlyTracked ? `
+            <button onclick="event.stopPropagation(); cancelTracking();" class="w-full bg-rose-600 hover:bg-rose-700 active:scale-[0.98] text-white font-bold text-xs py-2 px-3.5 rounded-xl shadow-md shadow-rose-600/20 flex items-center justify-center gap-1.5 transition-all">
+              <i data-lucide="x" class="w-3.5 h-3.5"></i>
+              <span>Cancel Tracking</span>
+            </button>
+          ` : `
+            <button onclick="event.stopPropagation(); selectTransferOption(${planIdx}, false); startTracking();" class="w-full ${btnBg} active:scale-[0.98] text-white font-bold text-xs py-2 px-3.5 rounded-xl shadow-md flex items-center justify-center gap-1.5 transition-all">
+              <i data-lucide="${btnIcon}" class="w-3.5 h-3.5"></i>
+              <span>${btnText}</span>
+            </button>
+          `}
         </div>
       `;
 
@@ -1368,6 +1458,7 @@ function updateAvailableBusesList() {
     return;
   }
 
+  // DIRECT ROUTE OPTION CARDS
   const effectiveStops = currentStopsList;
   let userPickupIdx = selectedPickupStop ? effectiveStops.findIndex(s => normalizeStr(s.name) === normalizeStr(selectedPickupStop.name)) : -1;
   let userDestIdx = selectedDestStop ? effectiveStops.findIndex(s => normalizeStr(s.name) === normalizeStr(selectedDestStop.name)) : -1;
@@ -1421,7 +1512,7 @@ function updateAvailableBusesList() {
       document.getElementById('floatBusPlate').innerHTML = `
         <div class="flex items-center gap-1.5 flex-nowrap">
           <span class="font-bold text-slate-900">${activeSelectedBus.plate}</span>
-          <span class="text-[10px] font-extrabold text-sky-800 bg-sky-100/90 px-2 py-0.5 rounded border border-sky-200 whitespace-nowrap flex items-center gap-1">
+          <span class="text-[10px] font-extrabold text-sky-800 bg-sky-100/90 px-1.5 py-0.2 rounded border border-sky-200 whitespace-nowrap flex items-center gap-1">
             <span>➔</span>
             <span>${selectedDestStop ? selectedDestStop.name : 'En Route'}</span>
           </span>
@@ -1434,20 +1525,21 @@ function updateAvailableBusesList() {
       const isSelected = (item.plate === selectedBusPlate);
       const isBest = (rank === 0);
       const cardinalDir = (item.bus.busDir === "UP") ? "North Bound" : "South Bound";
+      const isCurrentlyTracked = isTrackingConfirmed && isSelected;
 
       const card = document.createElement("div");
-      card.className = `bg-white border ${isSelected ? 'border-emerald-500 ring-2 ring-emerald-500/10' : 'border-slate-200'} hover:border-emerald-500 rounded-2xl p-3.5 shadow-sm transition-all duration-200 hover:shadow-md cursor-pointer mb-2.5`;
+      card.className = `bg-white border ${isSelected ? 'border-emerald-500 ring-2 ring-emerald-500/10' : 'border-slate-200'} hover:border-emerald-500 rounded-2xl p-3 shadow-sm transition-all duration-200 hover:shadow-md cursor-pointer mb-2.5`;
       card.onclick = () => selectBus(item.plate);
 
       card.innerHTML = `
         <div class="flex items-center justify-between pb-2 border-b border-slate-100">
           <div>
             ${isBest ? `
-              <span class="inline-flex items-center gap-1 bg-emerald-600 text-white text-[10px] font-extrabold px-2 py-0.5 rounded-md shadow-sm">
+              <span class="inline-flex items-center gap-1 bg-emerald-600 text-white text-[9px] sm:text-[10px] font-extrabold px-2 py-0.5 rounded-md shadow-sm">
                 ★ Best Option
               </span>
             ` : `
-              <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Alternate</span>
+              <span class="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider">Alternate</span>
             `}
           </div>
           <span class="inline-flex items-center gap-1.5 text-[11px] font-bold text-emerald-600">
@@ -1459,25 +1551,25 @@ function updateAvailableBusesList() {
         <div class="flex items-center justify-between mt-2.5 gap-2">
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2">
-              <span class="text-2xl font-black text-emerald-600 tracking-tight shrink-0">${item.bus.route}</span>
+              <span class="text-xl sm:text-2xl font-black text-emerald-600 tracking-tight shrink-0">${item.bus.route}</span>
               <span class="text-xs font-bold text-slate-800 truncate">
                 ${selectedPickupStop ? selectedPickupStop.name : 'Origin'} 
                 <span class="text-slate-400 font-normal">➔</span> 
                 ${selectedDestStop ? selectedDestStop.name : 'Destination'}
               </span>
             </div>
-            <div class="text-[11px] text-slate-400 truncate mt-0.5">
+            <div class="text-[10px] sm:text-[11px] text-slate-400 truncate mt-0.5">
               Near ${item.currentLocationName}
             </div>
           </div>
 
           <div class="text-right shrink-0">
-            <div class="text-lg font-black text-emerald-600 leading-tight">${item.etaLabel}</div>
-            <div class="text-[10px] text-slate-400 whitespace-nowrap">${item.stopsAway === 0 ? 'Approaching' : `${item.stopsAway} stops away`}</div>
+            <div class="text-base sm:text-lg font-black text-emerald-600 leading-tight">${item.etaLabel}</div>
+            <div class="text-[9px] sm:text-[10px] text-slate-400 whitespace-nowrap">${item.stopsAway === 0 ? 'Approaching' : `${item.stopsAway} stops away`}</div>
           </div>
         </div>
 
-        <div class="flex items-center justify-between text-[11px] font-medium text-slate-500 mt-2.5 pt-2 border-t border-slate-100">
+        <div class="flex items-center justify-between text-[10px] sm:text-[11px] font-medium text-slate-500 mt-2.5 pt-2 border-t border-slate-100">
           <span class="font-mono font-bold text-slate-700">${item.bus.plate}</span>
           <span class="flex items-center gap-1 text-slate-500">
             <i data-lucide="radio" class="w-3 h-3 text-slate-400"></i> Live
@@ -1487,11 +1579,18 @@ function updateAvailableBusesList() {
           </span>
         </div>
 
-        <div class="mt-3">
-          <button onclick="event.stopPropagation(); selectBus('${item.plate}'); startTracking();" class="w-full bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-bold text-xs py-2 px-4 rounded-xl shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 transition-all">
-            <i data-lucide="bus" class="w-3.5 h-3.5"></i>
-            <span>Track this bus</span>
-          </button>
+        <div class="mt-2.5">
+          ${isCurrentlyTracked ? `
+            <button onclick="event.stopPropagation(); cancelTracking();" class="w-full bg-rose-600 hover:bg-rose-700 active:scale-[0.98] text-white font-bold text-xs py-2 px-3.5 rounded-xl shadow-md shadow-rose-600/20 flex items-center justify-center gap-1.5 transition-all">
+              <i data-lucide="x" class="w-3.5 h-3.5"></i>
+              <span>Cancel Tracking</span>
+            </button>
+          ` : `
+            <button onclick="event.stopPropagation(); selectBus('${item.plate}'); startTracking();" class="w-full bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-bold text-xs py-2 px-3.5 rounded-xl shadow-md shadow-emerald-600/20 flex items-center justify-center gap-1.5 transition-all">
+              <i data-lucide="bus" class="w-3.5 h-3.5"></i>
+              <span>Track this bus</span>
+            </button>
+          `}
         </div>
       `;
 
@@ -1503,20 +1602,22 @@ function updateAvailableBusesList() {
 
     const corridorRoutes = (activeMatchingRoutes.length > 0) ? activeMatchingRoutes : (lastSearchResult?.direct || []);
 
-    corridorRoutes.forEach(r => {
+    corridorRoutes.forEach((r, rIdx) => {
       const config = window.ROUTES_DATABASE[r.routeKey];
       if (!config) return;
 
+      const isCurrentlyTracked = isTrackingConfirmed && currentTripPlanType === 'DIRECT' && activeRouteKey === r.routeKey;
+
       const card = document.createElement("div");
-      card.className = "bg-white border border-slate-200 rounded-2xl p-3.5 shadow-sm transition-all duration-200 mb-2.5";
+      card.className = "bg-white border border-slate-200 rounded-2xl p-3 shadow-sm transition-all duration-200 mb-2.5";
       card.innerHTML = `
         <div class="flex items-center justify-between pb-2 border-b border-slate-100">
-          <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Scheduled Service</span>
-          <span class="text-[11px] font-semibold text-slate-400">No Live GPS</span>
+          <span class="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider">Scheduled Service</span>
+          <span class="text-[10px] sm:text-[11px] font-semibold text-slate-400">No Live GPS</span>
         </div>
         <div class="flex items-center justify-between mt-2.5">
           <div class="flex items-center gap-2.5 min-w-0 pr-2">
-            <div class="text-2xl font-black text-slate-600 tracking-tight shrink-0">${config.name}</div>
+            <div class="text-xl sm:text-2xl font-black text-slate-600 tracking-tight shrink-0">${config.name}</div>
             <div class="min-w-0">
               <div class="text-xs font-bold text-slate-800 truncate">
                 ${selectedPickupStop ? selectedPickupStop.name : 'Origin'} ➔ ${selectedDestStop ? selectedDestStop.name : 'Destination'}
@@ -1524,6 +1625,19 @@ function updateAvailableBusesList() {
               <div class="text-[10px] text-slate-400">Timetable Route</div>
             </div>
           </div>
+        </div>
+        <div class="mt-2.5">
+          ${isCurrentlyTracked ? `
+            <button onclick="event.stopPropagation(); cancelTracking();" class="w-full bg-rose-600 hover:bg-rose-700 active:scale-[0.98] text-white font-bold text-xs py-2 px-3.5 rounded-xl shadow-md shadow-rose-600/20 flex items-center justify-center gap-1.5 transition-all">
+              <i data-lucide="x" class="w-3.5 h-3.5"></i>
+              <span>Cancel Tracking</span>
+            </button>
+          ` : `
+            <button onclick="event.stopPropagation(); selectDirectOption(${rIdx}, false); startTracking();" class="w-full bg-slate-700 hover:bg-slate-800 active:scale-[0.98] text-white font-bold text-xs py-2 px-3.5 rounded-xl shadow-md flex items-center justify-center gap-1.5 transition-all">
+              <i data-lucide="map-pin" class="w-3.5 h-3.5"></i>
+              <span>Track Scheduled Route</span>
+            </button>
+          `}
         </div>
       `;
       container.appendChild(card);
@@ -1545,10 +1659,17 @@ function selectBus(plate) {
 }
 
 // ==========================================
-// 8. STOP TIMELINE TABLE (LIVE IN PREVIEW & TRACKING)
+// 8. STOP TIMELINE TABLE
 // ==========================================
 function updateStopsTable(busLat, busLng, currentSpeedKmph) {
-  if (!selectedPickupStop || !selectedDestStop) return;
+  if (!isTrackingConfirmed || !selectedPickupStop || !selectedDestStop) {
+    document.getElementById("stopsTable").classList.add("hidden");
+    document.getElementById("noTrackPlaceholder").classList.remove("hidden");
+    return;
+  }
+
+  document.getElementById("stopsTable").classList.remove("hidden");
+  document.getElementById("noTrackPlaceholder").classList.add("hidden");
 
   if (!selectedBusPlate || !activeBuses[selectedBusPlate]) {
     renderSchedulePreview();
@@ -1585,17 +1706,17 @@ function updateStopsTable(busLat, busLng, currentSpeedKmph) {
       if (actualStopIdx < activeTransferPlan.leg1.pIdx) {
         displayStepNum = `<span class="text-amber-500 font-black text-xs">●</span>`;
         const dMeters = calculateAccurateBusToStopDistance(busLat, busLng, actualStopIdx, activeTransferPlan.leg1.stops);
-        distLabel = dMeters >= 1000 ? `${(dMeters / 1000).toFixed(1)} km from bus` : `${Math.round(dMeters)} m from bus`;
+        distLabel = dMeters >= 1000 ? `${(dMeters / 1000).toFixed(1)} km` : `${Math.round(dMeters)} m`;
       } else if (actualStopIdx === activeTransferPlan.leg1.pIdx) {
         displayStepNum = `${rideStepNum++}`;
         const dToPickup = calculateAccurateBusToStopDistance(busLat, busLng, activeTransferPlan.leg1.pIdx, activeTransferPlan.leg1.stops);
         const pickupDistStr = dToPickup >= 1000 ? `${(dToPickup / 1000).toFixed(1)} km` : `${Math.round(dToPickup)} m`;
-        distLabel = `${pickupDistStr} (Boarding)`;
+        distLabel = `${pickupDistStr}`;
       } else {
         displayStepNum = `${rideStepNum++}`;
         const prev = activeTransferPlan.leg1.stops[actualStopIdx - 1];
         accRideDist += getDistanceMeters(prev.lat, prev.lng, stop.lat, stop.lng) * ROAD_CURVATURE;
-        distLabel = `+${(accRideDist / 1000).toFixed(1)} km ride`;
+        distLabel = `+${(accRideDist / 1000).toFixed(1)} km`;
       }
 
       const dDirectToStop = getDistanceMeters(busLat, busLng, stop.lat, stop.lng);
@@ -1621,20 +1742,20 @@ function updateStopsTable(busLat, busLng, currentSpeedKmph) {
         const stopsToPickup = actualStopIdx - busAbsoluteIdx;
         
         if (stopsToPickup === 0) {
-          remLabel = (dDirectToStop <= 100) ? "🟢 Boarding (Arrived)" : "🟢 Boarding (Approaching)";
+          remLabel = (dDirectToStop <= 100) ? "🟢 Arrived" : "🟢 Approaching";
         } else {
-          remLabel = `🟢 Boarding (${stopsToPickup} stop${stopsToPickup > 1 ? 's' : ''} away)`;
+          remLabel = `🟢 Boarding (${stopsToPickup} away)`;
         }
       } else if (idx === leg1Stops.length - 1) {
         rowClass = "bg-amber-50/80 border-l-4 border-amber-500 font-bold text-slate-900";
         const stopEtaSec = calculateEtaSeconds(busLat, busLng, currentSpeedKmph, actualStopIdx, activeTransferPlan.leg1.stops);
         etaLabel = formatEtaTime(stopEtaSec);
-        remLabel = "🔄 Alight for Transfer";
+        remLabel = "🔄 Transfer Hub";
       } else if (actualStopIdx < activeTransferPlan.leg1.pIdx) {
         const stopEtaSec = calculateEtaSeconds(busLat, busLng, currentSpeedKmph, actualStopIdx, activeTransferPlan.leg1.stops);
         etaLabel = formatEtaTime(stopEtaSec);
         const stopsAway = actualStopIdx - busAbsoluteIdx;
-        remLabel = `Approach stop • ${stopsAway} stop${stopsAway > 1 ? 's' : ''} away`;
+        remLabel = `Approach • ${stopsAway} stop${stopsAway > 1 ? 's' : ''}`;
       } else {
         const stopEtaSec = calculateEtaSeconds(busLat, busLng, currentSpeedKmph, actualStopIdx, activeTransferPlan.leg1.stops);
         etaLabel = formatEtaTime(stopEtaSec);
@@ -1645,11 +1766,11 @@ function updateStopsTable(busLat, busLng, currentSpeedKmph) {
       const tr = document.createElement("tr");
       if (rowClass) tr.className = rowClass;
       tr.innerHTML = `
-        <td class="p-2.5 pl-4">${displayStepNum}</td>
-        <td class="p-2.5 font-semibold text-slate-800">${stop.name} <span class="text-[10px] text-sky-700 font-bold">(${r1Name})</span></td>
-        <td class="p-2.5 text-slate-600">${distLabel}</td>
-        <td class="p-2.5 text-slate-600">${remLabel}</td>
-        <td class="p-2.5 pr-4"><span class="px-2 py-0.5 rounded text-[11px] font-bold ${badgeClass}">${etaLabel}</span></td>
+        <td class="p-2 sm:p-2.5 pl-3 sm:pl-4">${displayStepNum}</td>
+        <td class="p-2 sm:p-2.5 font-semibold text-slate-800">${stop.name} <span class="text-[9px] text-sky-700 font-bold">(${r1Name})</span></td>
+        <td class="p-2 sm:p-2.5 text-slate-600 hidden sm:table-cell">${distLabel}</td>
+        <td class="p-2 sm:p-2.5 text-slate-600 text-[11px]">${remLabel}</td>
+        <td class="p-2 sm:p-2.5 pr-3 sm:pr-4 text-right sm:text-left"><span class="px-1.5 sm:px-2 py-0.5 rounded text-[10px] sm:text-[11px] font-bold ${badgeClass}">${etaLabel}</span></td>
       `;
       tbody.appendChild(tr);
     });
@@ -1657,8 +1778,8 @@ function updateStopsTable(busLat, busLng, currentSpeedKmph) {
     const transferTr = document.createElement("tr");
     transferTr.className = "bg-amber-100/70 font-extrabold text-amber-900";
     transferTr.innerHTML = `
-      <td class="p-2 pl-4 text-center">🔄</td>
-      <td colspan="4" class="p-2 text-xs">Switch to <span class="underline decoration-amber-600 font-black">${r2Name}</span> towards ${selectedDestStop.name}</td>
+      <td class="p-1.5 pl-3 sm:pl-4 text-center">🔄</td>
+      <td colspan="4" class="p-1.5 text-xs">Switch to <span class="underline decoration-amber-600 font-black">${r2Name}</span> towards ${selectedDestStop.name}</td>
     `;
     tbody.appendChild(transferTr);
 
@@ -1667,11 +1788,11 @@ function updateStopsTable(busLat, busLng, currentSpeedKmph) {
       const tr = document.createElement("tr");
       if (isFinal) tr.className = "bg-rose-50/80 border-l-4 border-rose-500 font-bold text-slate-900";
       tr.innerHTML = `
-        <td class="p-2.5 pl-4">${rideStepNum++}</td>
-        <td class="p-2.5 font-semibold text-slate-800">${stop.name} <span class="text-[10px] text-amber-700 font-bold">(${r2Name})</span></td>
-        <td class="p-2.5 text-slate-400">--</td>
-        <td class="p-2.5 text-slate-500">${isFinal ? "🏁 Final Destination" : "Connecting Ride"}</td>
-        <td class="p-2.5 pr-4"><span class="px-2 py-0.5 rounded text-[11px] font-bold bg-slate-100 text-slate-500">Scheduled</span></td>
+        <td class="p-2 sm:p-2.5 pl-3 sm:pl-4">${rideStepNum++}</td>
+        <td class="p-2 sm:p-2.5 font-semibold text-slate-800">${stop.name} <span class="text-[9px] text-amber-700 font-bold">(${r2Name})</span></td>
+        <td class="p-2 sm:p-2.5 text-slate-400 hidden sm:table-cell">--</td>
+        <td class="p-2 sm:p-2.5 text-slate-500 text-[11px]">${isFinal ? "🏁 Final Destination" : "Connecting Ride"}</td>
+        <td class="p-2 sm:p-2.5 pr-3 sm:pr-4 text-right sm:text-left"><span class="px-1.5 sm:px-2 py-0.5 rounded text-[10px] sm:text-[11px] font-bold bg-slate-100 text-slate-500">Scheduled</span></td>
       `;
       tbody.appendChild(tr);
     });
@@ -1712,17 +1833,17 @@ function updateStopsTable(busLat, busLng, currentSpeedKmph) {
     if (actualStopIdx < pIdx) {
       displayStepNum = `<span class="text-amber-500 font-black text-xs">●</span>`;
       const dMeters = calculateAccurateBusToStopDistance(busLat, busLng, actualStopIdx, currentStopsList);
-      distLabel = dMeters >= 1000 ? `${(dMeters / 1000).toFixed(1)} km from bus` : `${Math.round(dMeters)} m from bus`;
+      distLabel = dMeters >= 1000 ? `${(dMeters / 1000).toFixed(1)} km` : `${Math.round(dMeters)} m`;
     } else if (actualStopIdx === pIdx) {
       displayStepNum = `${rideStepNum++}`;
       const dToPickup = calculateAccurateBusToStopDistance(busLat, busLng, pIdx, currentStopsList);
       const pickupDistStr = dToPickup >= 1000 ? `${(dToPickup / 1000).toFixed(1)} km` : `${Math.round(dToPickup)} m`;
-      distLabel = `${pickupDistStr} (Boarding)`;
+      distLabel = `${pickupDistStr}`;
     } else {
       displayStepNum = `${rideStepNum++}`;
       const prev = currentStopsList[actualStopIdx - 1];
       accRideDist += getDistanceMeters(prev.lat, prev.lng, stop.lat, stop.lng) * ROAD_CURVATURE;
-      distLabel = (actualStopIdx === dIdx) ? `+${(accRideDist / 1000).toFixed(1)} km (Drop)` : `+${(accRideDist / 1000).toFixed(1)} km ride`;
+      distLabel = `+${(accRideDist / 1000).toFixed(1)} km`;
     }
 
     const dDirectToStop = getDistanceMeters(busLat, busLng, stop.lat, stop.lng);
@@ -1748,9 +1869,9 @@ function updateStopsTable(busLat, busLng, currentSpeedKmph) {
       const stopsToPickup = actualStopIdx - busAbsoluteIdx;
       
       if (stopsToPickup === 0) {
-        remLabel = (dDirectToStop <= 100) ? "🟢 Boarding (Arrived)" : "🟢 Boarding (Approaching)";
+        remLabel = (dDirectToStop <= 100) ? "🟢 Arrived" : "🟢 Approaching";
       } else {
-        remLabel = `🟢 Boarding (${stopsToPickup} stop${stopsToPickup > 1 ? 's' : ''} away)`;
+        remLabel = `🟢 Boarding (${stopsToPickup} away)`;
       }
     } else if (relIdx === journeyStops.length - 1) {
       rowClass = "bg-rose-50/80 border-l-4 border-rose-500 font-bold text-slate-900";
@@ -1761,7 +1882,7 @@ function updateStopsTable(busLat, busLng, currentSpeedKmph) {
       const stopEtaSec = calculateEtaSeconds(busLat, busLng, currentSpeedKmph, actualStopIdx, currentStopsList);
       etaLabel = formatEtaTime(stopEtaSec);
       const stopsAway = actualStopIdx - busAbsoluteIdx;
-      remLabel = `Approach stop • ${stopsAway} stop${stopsAway > 1 ? 's' : ''} away`;
+      remLabel = `Approach • ${stopsAway} stop${stopsAway > 1 ? 's' : ''}`;
     } else {
       const stopEtaSec = calculateEtaSeconds(busLat, busLng, currentSpeedKmph, actualStopIdx, currentStopsList);
       etaLabel = formatEtaTime(stopEtaSec);
@@ -1772,11 +1893,11 @@ function updateStopsTable(busLat, busLng, currentSpeedKmph) {
     const tr = document.createElement("tr");
     if (rowClass) tr.className = rowClass;
     tr.innerHTML = `
-      <td class="p-2.5 pl-4">${displayStepNum}</td>
-      <td class="p-2.5 font-semibold text-slate-800">${stop.name}</td>
-      <td class="p-2.5 text-slate-600">${distLabel}</td>
-      <td class="p-2.5 text-slate-600">${remLabel}</td>
-      <td class="p-2.5 pr-4"><span class="px-2 py-0.5 rounded text-[11px] font-bold ${badgeClass}">${etaLabel}</span></td>
+      <td class="p-2 sm:p-2.5 pl-3 sm:pl-4">${displayStepNum}</td>
+      <td class="p-2 sm:p-2.5 font-semibold text-slate-800">${stop.name}</td>
+      <td class="p-2 sm:p-2.5 text-slate-600 hidden sm:table-cell">${distLabel}</td>
+      <td class="p-2 sm:p-2.5 text-slate-600 text-[11px]">${remLabel}</td>
+      <td class="p-2 sm:p-2.5 pr-3 sm:pr-4 text-right sm:text-left"><span class="px-1.5 sm:px-2 py-0.5 rounded text-[10px] sm:text-[11px] font-bold ${badgeClass}">${etaLabel}</span></td>
     `;
     tbody.appendChild(tr);
   });
@@ -1794,7 +1915,7 @@ function recenterMap() {
 }
 
 // ==========================================
-// 9. HIGH-SCALE FLEET MQTT INGESTION (WEBSOCKETS)
+// 9. FLEET MQTT INGESTION (WEBSOCKETS)
 // ==========================================
 updateAvailableBusesList();
 
@@ -1886,34 +2007,32 @@ client.on('message', (topic, message) => {
       }).addTo(map);
       breadcrumbLines[busPlate] = L.polyline([], { color: '#0284c7', weight: 4 }).addTo(map);
       
-      // Auto pan to first live vehicle
       map.panTo(pos);
     } else {
       activeBusMarkers[busPlate].setLatLng(pos);
       activeBusMarkers[busPlate].setIcon(createDynamicBusMapIcon(routeConfig.name, busPlate, busHeading, destTerminal));
     }
     
-    // Anti-teleportation filter: Clear breadcrumbs if coordinates jump > 500m instantly
+    // Anti-teleportation filter
     if (breadcrumbLines[busPlate]) {
       const latLngs = breadcrumbLines[busPlate].getLatLngs();
       if (latLngs.length > 0) {
         const lastPt = latLngs[latLngs.length - 1];
         const jumpDist = getDistanceMeters(lastPt.lat, lastPt.lng, busLat, busLng);
         if (jumpDist > 500) {
-          breadcrumbLines[busPlate].setLatLngs([]); // Reset line to clear cross-map streak
+          breadcrumbLines[busPlate].setLatLngs([]);
         }
       }
 
       breadcrumbLines[busPlate].addLatLng(pos);
       
-      // Cap breadcrumb memory to latest 60 points
       const currentPts = breadcrumbLines[busPlate].getLatLngs();
       if (currentPts.length > 60) {
         breadcrumbLines[busPlate].setLatLngs(currentPts.slice(-60));
       }
     }
 
-    if (busPlate === selectedBusPlate) {
+    if (busPlate === selectedBusPlate && isTrackingConfirmed) {
       updateStopsTable(busLat, busLng, busSpeed);
     } else {
       updateAvailableBusesList();
@@ -1926,7 +2045,7 @@ client.on('message', (topic, message) => {
   }
 });
 
-// Purge offline buses after 90 seconds of silence (tolerant to 2G network fluctuations)
+// Purge offline buses after 90 seconds of silence
 setInterval(() => {
   const now = Date.now();
   let stateChanged = false;
