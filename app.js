@@ -24,6 +24,7 @@ let currentTripPlanType = "DIRECT"; // "DIRECT" or "TRANSFER"
 let lastSearchResult = null;
 let hasAutoScrolledForCurrentTrip = false;
 let currentMobileTab = "buses"; // "buses" or "schedule"
+let shouldResetScrollOnNextRender = false;
 
 const activeBuses = {};
 const activeBusMarkers = {};
@@ -622,18 +623,19 @@ function closeLinesModal() {
 }
 
 // ==========================================
-// 5. DIRECT-FIRST & PARALLEL TRANSFER ROUTING ENGINE
+// 5. CLEAN NO-BACKTRACK TRANSIT DISCOVERY ENGINE
 // ==========================================
 function findMatchingRoutes(pName, dName) {
   let pNorm = normalizeStr(pName);
   let dNorm = normalizeStr(dName);
   const directMatches = [];
+  const rawTransfers = [];
 
   if (!window.ROUTES_DATABASE) return { direct: [], transfers: [] };
 
   const allRouteKeys = Object.keys(window.ROUTES_DATABASE);
 
-  // 1. Direct Routes Search (UP and DOWN)
+  // 1. Direct Routes Discovery
   for (const rKey of allRouteKeys) {
     const rObj = window.ROUTES_DATABASE[rKey];
     
@@ -653,14 +655,7 @@ function findMatchingRoutes(pName, dName) {
     }
   }
 
-  // IF DIRECT ROUTES EXIST: Always prefer direct routes and do NOT calculate transfers
-  if (directMatches.length > 0) {
-    return { direct: directMatches, transfers: [] };
-  }
-
-  // 2. 1-Transfer Search (ONLY performed when zero direct routes exist)
-  const candidateTransfers = [];
-
+  // 2. 1-Transfer Discovery (Strict Anti-Backtracking & Progress Verification)
   for (const r1Key of allRouteKeys) {
     const r1 = window.ROUTES_DATABASE[r1Key];
     const directions1 = [
@@ -675,7 +670,7 @@ function findMatchingRoutes(pName, dName) {
       const pStop = leg1.stops[pIdx];
 
       for (const r2Key of allRouteKeys) {
-        if (r2Key === r1Key) continue;
+        if (r2Key === r1Key) continue; // No self-transfers
         const r2 = window.ROUTES_DATABASE[r2Key];
         const directions2 = [
           { dir: "UP", stops: r2.forwardStops },
@@ -702,7 +697,11 @@ function findMatchingRoutes(pName, dName) {
               const distLeg2 = getDistanceMeters(transferStop.lat, transferStop.lng, dStop.lat, dStop.lng);
               const totalTransferDist = distLeg1 + distLeg2;
 
-              if (totalTransferDist <= Math.max(distPickupToDest * 2.2, 7500) && distTransferToDest <= distPickupToDest + 1200) {
+              // Geometric filter: Interchange must bring passenger closer to destination
+              const makesForwardProgress = distTransferToDest < (distPickupToDest - 500);
+              const isReasonableTotalDist = totalTransferDist <= Math.max(distPickupToDest * 1.5, 6000);
+
+              if (makesForwardProgress && isReasonableTotalDist) {
                 commonStops.push({
                   transferStopName: transferStop.name,
                   tIdx: tIdx,
@@ -716,15 +715,8 @@ function findMatchingRoutes(pName, dName) {
           }
 
           if (commonStops.length > 0) {
-            let bestTransfer = null;
-
-            if (leg1.dir !== leg2.dir) {
-              commonStops.sort((a, b) => a.tIdx - b.tIdx || a.totalDist - b.totalDist);
-              bestTransfer = commonStops[0];
-            } else {
-              commonStops.sort((a, b) => b.tIdx - a.tIdx || a.distTransferToDest - b.distTransferToDest);
-              bestTransfer = commonStops[0];
-            }
+            commonStops.sort((a, b) => a.distTransferToDest - b.distTransferToDest || a.totalDist - b.totalDist);
+            const bestTransfer = commonStops[0];
 
             const liveLeg1Buses = Object.values(activeBuses).filter(b => {
               const isLine = normalizeStr(b.routeKey || b.route).includes(normalizeStr(r1Key));
@@ -740,7 +732,7 @@ function findMatchingRoutes(pName, dName) {
               return bIdx <= bestTransfer.t2Idx;
             });
 
-            candidateTransfers.push({
+            rawTransfers.push({
               type: 'TRANSFER',
               transferStopName: bestTransfer.transferStopName,
               totalDist: bestTransfer.totalDist,
@@ -772,13 +764,26 @@ function findMatchingRoutes(pName, dName) {
     }
   }
 
+  // Deduplicate and filter out redundant duplicate transfer options
+  const uniqueTransfersMap = new Map();
+  rawTransfers.forEach(plan => {
+    const key = `${normalizeStr(plan.leg1.routeKey)}_${normalizeStr(plan.leg2.routeKey)}_${normalizeStr(plan.transferStopName)}`;
+    if (!uniqueTransfersMap.has(key) || (plan.hasLiveLeg1 && !uniqueTransfersMap.get(key).hasLiveLeg1)) {
+      uniqueTransfersMap.set(key, plan);
+    }
+  });
+
+  const candidateTransfers = Array.from(uniqueTransfersMap.values());
   candidateTransfers.sort((a, b) => {
     const liveScoreA = (a.hasLiveLeg1 ? 2 : 0) + (a.hasLiveLeg2 ? 1 : 0);
     const liveScoreB = (b.hasLiveLeg1 ? 2 : 0) + (b.hasLiveLeg2 ? 1 : 0);
     return liveScoreB - liveScoreA || a.totalDist - b.totalDist;
   });
 
-  return { direct: [], transfers: candidateTransfers };
+  // Keep top 2 best transfer plans to avoid cluttering suggestions
+  const topTransfers = candidateTransfers.slice(0, 2);
+
+  return { direct: directMatches, transfers: topTransfers };
 }
 
 function handleSearchClick() {
@@ -790,21 +795,50 @@ function handleSearchClick() {
     return;
   }
 
+  // ONLY Reset scrollbar to the top upon clicking Search
+  shouldResetScrollOnNextRender = true;
+
   lastSearchResult = findMatchingRoutes(pickVal, destVal);
   busNearestStopIdx = 0;
   selectedBusPlate = null;
 
-  if (lastSearchResult.direct.length > 0) {
+  const hasDirect = lastSearchResult.direct.length > 0;
+  const hasTransfers = lastSearchResult.transfers.length > 0;
+
+  if (!hasDirect && !hasTransfers) {
+    alert("No direct or connecting route found between these locations in this direction.");
+    return;
+  }
+
+  // Check if any direct route has an active live bus approaching
+  const hasLiveDirect = hasDirect && lastSearchResult.direct.some(d => {
+    return Object.values(activeBuses).some(b => {
+      const isLine = normalizeStr(b.routeKey || b.route).includes(normalizeStr(d.routeKey));
+      const isDir = (b.busDir === d.direction);
+      if (!isLine || !isDir) return false;
+      const bIdx = findBusNearestStopIndex(b.lat, b.lng, d.stops);
+      return bIdx <= d.pIdx;
+    });
+  });
+
+  // Check if any transfer route has an active live bus approaching Leg 1
+  const hasLiveTransfer = hasTransfers && lastSearchResult.transfers.some(t => t.hasLiveLeg1);
+
+  // Switch back to buses view on mobile
+  if (window.innerWidth < 768) {
+    switchMobileTab('buses');
+  }
+
+  // Hierarchy: Live Direct > Live Transfer > Scheduled Direct > Scheduled Transfer
+  if (hasLiveDirect) {
     selectDirectOption(0, false);
-    return;
-  }
-
-  if (lastSearchResult.transfers.length > 0) {
+  } else if (hasLiveTransfer) {
     selectTransferOption(0, false);
-    return;
+  } else if (hasDirect) {
+    selectDirectOption(0, false);
+  } else {
+    selectTransferOption(0, false);
   }
-
-  alert("No direct or connecting route found between these locations in this direction.");
 }
 
 function selectDirectOption(index = 0, maintainTracking = false) {
@@ -1057,12 +1091,10 @@ function renderSchedulePreview() {
 
     leg2Stops.forEach((stop, idx) => {
       const isFinal = (idx === leg2Stops.length - 1);
-      let rowClass = isFinal ? "bg-rose-50/80 border-l-4 border-rose-500 font-bold text-slate-900" : "";
-
       const tr = document.createElement("tr");
-      if (rowClass) tr.className = rowClass;
+      if (isFinal) tr.className = "bg-rose-50/80 border-l-4 border-rose-500 font-bold text-slate-900";
       tr.innerHTML = `
-        <td class="p-2 sm:p-2.5 pl-3 sm:pl-4">${stepNum++}</td>
+        <td class="p-2 sm:p-2.5 pl-3 sm:pl-4">${rideStepNum++}</td>
         <td class="p-2 sm:p-2.5 font-semibold text-slate-800">${stop.name} <span class="text-[9px] text-amber-700 font-bold">(${r2Name})</span></td>
         <td class="p-2 sm:p-2.5 text-slate-400 hidden sm:table-cell">--</td>
         <td class="p-2 sm:p-2.5 text-slate-500 text-[11px]">${isFinal ? "🏁 Final Destination" : "Connecting Ride"}</td>
@@ -1295,15 +1327,18 @@ function renderRoutePins(autoFit = false) {
 function updateAvailableBusesList() {
   const container = document.getElementById("busesListContainer");
   const floatingCard = document.getElementById("floatingBusCard");
-  if (!container) return;
+  if (!container || !lastSearchResult) return;
+
+  // Preserve user scroll position across live background updates
+  const previousScrollTop = container.scrollTop;
   container.innerHTML = "";
 
-  // 1-TRANSFER OPTION CARDS
-  if (currentTripPlanType === "TRANSFER" && activeTransferPlan) {
-    const transferOptions = (lastSearchResult && lastSearchResult.transfers) ? lastSearchResult.transfers : [activeTransferPlan];
+  const allCards = [];
 
-    transferOptions.forEach((plan, planIdx) => {
-      const isSelectedPlan = (plan.leg1.routeKey === activeTransferPlan.leg1.routeKey && plan.leg2.routeKey === activeTransferPlan.leg2.routeKey && plan.transferStopName === activeTransferPlan.transferStopName);
+  // 1. Process 1-Transfer Options
+  if (lastSearchResult.transfers && lastSearchResult.transfers.length > 0) {
+    lastSearchResult.transfers.forEach((plan, planIdx) => {
+      const isSelectedPlan = (currentTripPlanType === "TRANSFER" && activeTransferPlan && plan.leg1.routeKey === activeTransferPlan.leg1.routeKey && plan.leg2.routeKey === activeTransferPlan.leg2.routeKey && plan.transferStopName === activeTransferPlan.transferStopName);
 
       const r1Config = window.ROUTES_DATABASE[plan.leg1.routeKey] || {};
       const r2Config = window.ROUTES_DATABASE[plan.leg2.routeKey] || {};
@@ -1321,13 +1356,22 @@ function updateAvailableBusesList() {
         return busCurrentIdx <= plan.leg1.pIdx;
       });
 
-      const isUpcomingLive = upcomingLeg1Buses.length > 0;
-      const liveBus = isUpcomingLive ? upcomingLeg1Buses[0] : null;
+      const isLeg1Live = upcomingLeg1Buses.length > 0;
+      const isLeg2Live = Object.values(activeBuses).some(b => {
+        const isLine = normalizeStr(b.routeKey || b.route).includes(normalizeStr(plan.leg2.routeKey));
+        if (!isLine || b.busDir !== plan.leg2.direction) return false;
+        const bIdx = findBusNearestStopIndex(b.lat, b.lng, plan.leg2.stops);
+        return bIdx <= plan.leg2.tIdx;
+      });
+
+      const isAllLive = isLeg1Live && isLeg2Live;
+      const isPartialLive = isLeg1Live && !isLeg2Live;
+      const liveBus = isLeg1Live ? upcomingLeg1Buses[0] : null;
 
       if (isSelectedPlan) {
-        if (isUpcomingLive && (!selectedBusPlate || !upcomingLeg1Buses.some(b => b.plate === selectedBusPlate))) {
+        if (isLeg1Live && (!selectedBusPlate || !upcomingLeg1Buses.some(b => b.plate === selectedBusPlate))) {
           selectedBusPlate = liveBus.plate;
-        } else if (!isUpcomingLive) {
+        } else if (!isLeg1Live) {
           selectedBusPlate = null;
         }
 
@@ -1357,14 +1401,35 @@ function updateAvailableBusesList() {
 
       const isCurrentlyTracked = isTrackingConfirmed && isSelectedPlan;
 
-      const btnBg = isUpcomingLive 
+      const btnBg = isLeg1Live 
         ? "bg-violet-600 hover:bg-violet-700 shadow-violet-600/20" 
         : "bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/20";
-      const btnText = isUpcomingLive ? "Track this bus & route" : "Track this route";
-      const btnIcon = isUpcomingLive ? "bus" : "git-merge";
+      const btnText = isLeg1Live ? "Track this bus & route" : "Track this route";
+      const btnIcon = isLeg1Live ? "bus" : "git-merge";
+
+      let badgeHtml = '';
+      if (isAllLive) {
+        badgeHtml = `
+          <span class="inline-flex items-center gap-1.5 text-[11px] font-bold text-emerald-600">
+            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            Live
+          </span>`;
+      } else if (isPartialLive) {
+        badgeHtml = `
+          <span class="inline-flex items-center gap-1.5 text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200/80 px-2 py-0.5 rounded-full">
+            <span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+            Partial Live
+          </span>`;
+      } else {
+        badgeHtml = `
+          <span class="inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-400">
+            <span class="w-2 h-2 rounded-full bg-slate-300"></span>
+            Scheduled
+          </span>`;
+      }
 
       const card = document.createElement("div");
-      card.className = `bg-white border ${isSelectedPlan ? (isUpcomingLive ? 'border-violet-500 ring-2 ring-violet-500/10' : 'border-indigo-500 ring-2 ring-indigo-500/10') : 'border-slate-200'} hover:border-violet-500 rounded-2xl p-3 shadow-sm transition-all duration-200 hover:shadow-md cursor-pointer mb-2.5`;
+      card.className = `bg-white border ${isSelectedPlan ? (isLeg1Live ? 'border-violet-500 ring-2 ring-violet-500/10' : 'border-indigo-500 ring-2 ring-indigo-500/10') : 'border-slate-200'} hover:border-violet-500 rounded-2xl p-3 shadow-sm transition-all duration-200 hover:shadow-md cursor-pointer mb-2.5`;
       card.onclick = () => {
         selectTransferOption(planIdx, isCurrentlyTracked);
       };
@@ -1372,30 +1437,27 @@ function updateAvailableBusesList() {
       card.innerHTML = `
         <div class="flex items-center justify-between pb-2 border-b border-slate-100">
           <div>
-            ${planIdx === 0 ? `
-              <span class="inline-flex items-center gap-1 ${isUpcomingLive ? 'bg-violet-600' : 'bg-indigo-600'} text-white text-[9px] sm:text-[10px] font-extrabold px-2 py-0.5 rounded-md shadow-sm">
+            ${planIdx === 0 && isLeg1Live ? `
+              <span class="inline-flex items-center gap-1 bg-violet-600 text-white text-[9px] sm:text-[10px] font-extrabold px-2 py-0.5 rounded-md shadow-sm">
                 ★ Best Transfer
               </span>
             ` : `
-              <span class="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider">Alternate</span>
+              <span class="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider">1-Transfer Route</span>
             `}
           </div>
-          <span class="inline-flex items-center gap-1.5 text-[11px] font-bold ${isUpcomingLive ? 'text-emerald-600' : 'text-slate-400'}">
-            <span class="w-2 h-2 rounded-full ${isUpcomingLive ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}"></span>
-            ${isUpcomingLive ? 'Live' : 'Scheduled'}
-          </span>
+          ${badgeHtml}
         </div>
 
         <div class="mt-2.5">
           <div class="flex items-baseline justify-between gap-2">
-            <div class="text-base sm:text-lg font-black ${isUpcomingLive ? 'text-violet-700' : 'text-indigo-600'} tracking-tight flex items-center gap-1.5 flex-wrap">
+            <div class="text-base sm:text-lg font-black ${isLeg1Live ? 'text-violet-700' : 'text-indigo-600'} tracking-tight flex items-center gap-1.5 flex-wrap">
               <span>${r1Name}</span>
               <span class="text-xs text-slate-400 font-normal">➔</span>
               <span>${r2Name}</span>
             </div>
             <div class="text-right shrink-0">
-              <div class="text-sm sm:text-base font-black ${isUpcomingLive ? 'text-emerald-600' : 'text-slate-700'} leading-tight">${etaStr}</div>
-              <div class="text-[9px] sm:text-[10px] text-slate-400">${isUpcomingLive ? 'to pickup' : 'Timetable'}</div>
+              <div class="text-sm sm:text-base font-black ${isLeg1Live ? 'text-emerald-600' : 'text-slate-700'} leading-tight">${etaStr}</div>
+              <div class="text-[9px] sm:text-[10px] text-slate-400">${isLeg1Live ? 'to pickup' : 'Timetable'}</div>
             </div>
           </div>
 
@@ -1414,7 +1476,7 @@ function updateAvailableBusesList() {
         <div class="flex items-center justify-between text-[10px] sm:text-[11px] font-medium text-slate-500 mt-2.5 pt-2 border-t border-slate-100">
           <span class="font-mono font-bold text-slate-700">${liveBus ? liveBus.plate : 'Timetable'}</span>
           <span class="flex items-center gap-1">
-            <i data-lucide="radio" class="w-3 h-3 text-slate-400"></i> ${isUpcomingLive ? 'Connecting' : 'Regular'}
+            <i data-lucide="radio" class="w-3 h-3 text-slate-400"></i> ${isAllLive ? 'Full Live' : (isPartialLive ? 'Partial Live' : 'Regular')}
           </span>
           <span class="flex items-center gap-1 text-slate-600">
             <i data-lucide="map-pin" class="w-3 h-3 text-slate-400"></i> Change Hub
@@ -1436,197 +1498,209 @@ function updateAvailableBusesList() {
         </div>
       `;
 
-      container.appendChild(card);
+      allCards.push({ priority: isLeg1Live ? 1 : 4, etaSec: etaSec, elem: card });
     });
-
-    lucide.createIcons();
-    return;
   }
 
-  // DIRECT ROUTE OPTION CARDS
-  const effectiveStops = currentStopsList;
-  let userPickupIdx = selectedPickupStop ? effectiveStops.findIndex(s => normalizeStr(s.name) === normalizeStr(selectedPickupStop.name)) : -1;
-  let userDestIdx = selectedDestStop ? effectiveStops.findIndex(s => normalizeStr(s.name) === normalizeStr(selectedDestStop.name)) : -1;
+  // 2. Process Direct Routes (Live & Scheduled)
+  if (lastSearchResult.direct && lastSearchResult.direct.length > 0) {
+    const effectiveStops = (currentTripPlanType === "DIRECT" && currentStopsList.length > 0) ? currentStopsList : lastSearchResult.direct[0].stops;
+    let userPickupIdx = selectedPickupStop ? effectiveStops.findIndex(s => normalizeStr(s.name) === normalizeStr(selectedPickupStop.name)) : -1;
+    let userDestIdx = selectedDestStop ? effectiveStops.findIndex(s => normalizeStr(s.name) === normalizeStr(selectedDestStop.name)) : -1;
 
-  const allowedRouteKeys = activeMatchingRoutes.length > 0
-    ? activeMatchingRoutes.map(r => normalizeStr(r.routeKey))
-    : (activeRouteKey ? [normalizeStr(activeRouteKey)] : []);
+    const allowedRouteKeys = lastSearchResult.direct.map(r => normalizeStr(r.routeKey));
+    const viableBuses = [];
 
-  const viableBuses = [];
+    Object.entries(activeBuses).forEach(([plate, bus]) => {
+      const busRouteNorm = normalizeStr(bus.routeKey || bus.route);
+      const isCorridorMatch = allowedRouteKeys.some(rKey => busRouteNorm.includes(rKey) || rKey.includes(busRouteNorm));
+      const isSameDir = (bus.busDir === currentDirection);
 
-  Object.entries(activeBuses).forEach(([plate, bus]) => {
-    const busRouteNorm = normalizeStr(bus.routeKey || bus.route);
-    const isCorridorMatch = allowedRouteKeys.length === 0 || allowedRouteKeys.some(rKey => busRouteNorm.includes(rKey) || rKey.includes(busRouteNorm));
-    const isSameDir = (bus.busDir === currentDirection);
+      if (!isCorridorMatch || !isSameDir) return;
 
-    if (!isCorridorMatch || !isSameDir) return;
+      const busCurrentIdx = findBusNearestStopIndex(bus.lat, bus.lng, effectiveStops);
+      const busLocName = effectiveStops[busCurrentIdx]?.name || "En Route";
 
-    const busCurrentIdx = findBusNearestStopIndex(bus.lat, busLng, effectiveStops);
-    const busLocName = effectiveStops[busCurrentIdx]?.name || "En Route";
+      if (userPickupIdx !== -1 && busCurrentIdx > userPickupIdx) return;
+      if (userDestIdx !== -1 && busCurrentIdx >= userDestIdx) return;
 
-    if (userPickupIdx !== -1 && busCurrentIdx > userPickupIdx) return;
-    if (userDestIdx !== -1 && busCurrentIdx >= userDestIdx) return;
+      const etaSec = userPickupIdx !== -1 ? calculateEtaSeconds(bus.lat, bus.lng, bus.spd, userPickupIdx, effectiveStops) : Infinity;
+      const distMeters = userPickupIdx !== -1 ? calculateAccurateBusToStopDistance(bus.lat, bus.lng, userPickupIdx, effectiveStops) : 0;
+      const stopsAway = Math.max(0, userPickupIdx - busCurrentIdx);
 
-    const etaSec = userPickupIdx !== -1 ? calculateEtaSeconds(bus.lat, bus.lng, bus.spd, userPickupIdx, effectiveStops) : Infinity;
-    const distMeters = userPickupIdx !== -1 ? calculateAccurateBusToStopDistance(bus.lat, bus.lng, userPickupIdx, effectiveStops) : 0;
-    const stopsAway = Math.max(0, userPickupIdx - busCurrentIdx);
-
-    viableBuses.push({
-      plate,
-      bus,
-      currentLocationName: busLocName,
-      targetStopName: selectedPickupStop ? selectedPickupStop.name : busLocName,
-      etaSec,
-      etaLabel: formatEtaTime(etaSec),
-      distMeters,
-      stopsAway: stopsAway
+      viableBuses.push({
+        plate,
+        bus,
+        currentLocationName: busLocName,
+        targetStopName: selectedPickupStop ? selectedPickupStop.name : busLocName,
+        etaSec,
+        etaLabel: formatEtaTime(etaSec),
+        distMeters,
+        stopsAway: stopsAway
+      });
     });
-  });
 
-  if (viableBuses.length > 0) {
-    viableBuses.sort((a, b) => a.etaSec - b.etaSec);
+    if (viableBuses.length > 0) {
+      viableBuses.sort((a, b) => a.etaSec - b.etaSec);
 
-    if (!selectedBusPlate || !viableBuses.some(b => b.plate === selectedBusPlate)) {
-      selectedBusPlate = viableBuses[0].plate;
-    }
+      if (currentTripPlanType === "DIRECT") {
+        if (!selectedBusPlate || !viableBuses.some(b => b.plate === selectedBusPlate)) {
+          selectedBusPlate = viableBuses[0].plate;
+        }
 
-    const activeSelectedBus = viableBuses.find(b => b.plate === selectedBusPlate) || viableBuses[0];
+        const activeSelectedBus = viableBuses.find(b => b.plate === selectedBusPlate) || viableBuses[0];
 
-    if (isTrackingConfirmed && floatingCard) {
-      floatingCard.classList.remove("hidden");
-      document.getElementById('floatBusPlate').innerHTML = `
-        <div class="flex items-center gap-1.5 flex-nowrap">
-          <span class="font-bold text-slate-900">${activeSelectedBus.plate}</span>
-          <span class="text-[10px] font-extrabold text-sky-800 bg-sky-100/90 px-1.5 py-0.2 rounded border border-sky-200 whitespace-nowrap flex items-center gap-1">
-            <span>➔</span>
-            <span>${selectedDestStop ? selectedDestStop.name : 'En Route'}</span>
-          </span>
-        </div>
-      `;
-      document.getElementById('floatTelemetry').innerText = `Near: ${activeSelectedBus.currentLocationName} • Speed: ${activeSelectedBus.bus.spd.toFixed(1)} km/h`;
-    }
-
-    viableBuses.forEach((item, rank) => {
-      const isSelected = (item.plate === selectedBusPlate);
-      const isBest = (rank === 0);
-      const cardinalDir = (item.bus.busDir === "UP") ? "North Bound" : "South Bound";
-      const isCurrentlyTracked = isTrackingConfirmed && isSelected;
-
-      const card = document.createElement("div");
-      card.className = `bg-white border ${isSelected ? 'border-emerald-500 ring-2 ring-emerald-500/10' : 'border-slate-200'} hover:border-emerald-500 rounded-2xl p-3 shadow-sm transition-all duration-200 hover:shadow-md cursor-pointer mb-2.5`;
-      card.onclick = () => selectBus(item.plate);
-
-      card.innerHTML = `
-        <div class="flex items-center justify-between pb-2 border-b border-slate-100">
-          <div>
-            ${isBest ? `
-              <span class="inline-flex items-center gap-1 bg-emerald-600 text-white text-[9px] sm:text-[10px] font-extrabold px-2 py-0.5 rounded-md shadow-sm">
-                ★ Best Option
+        if (isTrackingConfirmed && floatingCard) {
+          floatingCard.classList.remove("hidden");
+          document.getElementById('floatBusPlate').innerHTML = `
+            <div class="flex items-center gap-1.5 flex-nowrap">
+              <span class="font-bold text-slate-900">${activeSelectedBus.plate}</span>
+              <span class="text-[10px] font-extrabold text-sky-800 bg-sky-100/90 px-1.5 py-0.2 rounded border border-sky-200 whitespace-nowrap flex items-center gap-1">
+                <span>➔</span>
+                <span>${selectedDestStop ? selectedDestStop.name : 'En Route'}</span>
               </span>
+            </div>
+          `;
+          document.getElementById('floatTelemetry').innerText = `Near: ${activeSelectedBus.currentLocationName} • Speed: ${activeSelectedBus.bus.spd.toFixed(1)} km/h`;
+        }
+      }
+
+      viableBuses.forEach((item, rank) => {
+        const isSelected = (currentTripPlanType === "DIRECT" && item.plate === selectedBusPlate);
+        const isBest = (rank === 0);
+        const cardinalDir = (item.bus.busDir === "UP") ? "North Bound" : "South Bound";
+        const isCurrentlyTracked = isTrackingConfirmed && isSelected;
+
+        const card = document.createElement("div");
+        card.className = `bg-white border ${isSelected ? 'border-emerald-500 ring-2 ring-emerald-500/10' : 'border-slate-200'} hover:border-emerald-500 rounded-2xl p-3 shadow-sm transition-all duration-200 hover:shadow-md cursor-pointer mb-2.5`;
+        card.onclick = () => {
+          if (currentTripPlanType !== "DIRECT") selectDirectOption(0, false);
+          selectBus(item.plate);
+        };
+
+        card.innerHTML = `
+          <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+            <div>
+              ${isBest ? `
+                <span class="inline-flex items-center gap-1 bg-emerald-600 text-white text-[9px] sm:text-[10px] font-extrabold px-2 py-0.5 rounded-md shadow-sm">
+                  ★ Best Option
+                </span>
+              ` : `
+                <span class="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider">Alternate</span>
+              `}
+            </div>
+            <span class="inline-flex items-center gap-1.5 text-[11px] font-bold text-emerald-600">
+              <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              Live
+            </span>
+          </div>
+
+          <div class="flex items-center justify-between mt-2.5 gap-2">
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2">
+                <span class="text-xl sm:text-2xl font-black text-emerald-600 tracking-tight shrink-0">${item.bus.route}</span>
+                <span class="text-xs font-bold text-slate-800 truncate">
+                  ${selectedPickupStop ? selectedPickupStop.name : 'Origin'} 
+                  <span class="text-slate-400 font-normal">➔</span> 
+                  ${selectedDestStop ? selectedDestStop.name : 'Destination'}
+                </span>
+              </div>
+              <div class="text-[10px] sm:text-[11px] text-slate-400 truncate mt-0.5">
+                Near ${item.currentLocationName}
+              </div>
+            </div>
+
+            <div class="text-right shrink-0">
+              <div class="text-base sm:text-lg font-black text-emerald-600 leading-tight">${item.etaLabel}</div>
+              <div class="text-[9px] sm:text-[10px] text-slate-400 whitespace-nowrap">${item.stopsAway === 0 ? 'Approaching' : `${item.stopsAway} stops away`}</div>
+            </div>
+          </div>
+
+          <div class="flex items-center justify-between text-[10px] sm:text-[11px] font-medium text-slate-500 mt-2.5 pt-2 border-t border-slate-100">
+            <span class="font-mono font-bold text-slate-700">${item.bus.plate}</span>
+            <span class="flex items-center gap-1 text-slate-500">
+              <i data-lucide="radio" class="w-3 h-3 text-slate-400"></i> Live
+            </span>
+            <span class="flex items-center gap-1 text-slate-600">
+              <i data-lucide="navigation" class="w-3 h-3 text-slate-400"></i> ${cardinalDir}
+            </span>
+          </div>
+
+          <div class="mt-2.5">
+            ${isCurrentlyTracked ? `
+              <button onclick="event.stopPropagation(); cancelTracking();" class="w-full bg-rose-600 hover:bg-rose-700 active:scale-[0.98] text-white font-bold text-xs py-2 px-3.5 rounded-xl shadow-md shadow-rose-600/20 flex items-center justify-center gap-1.5 transition-all">
+                <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                <span>Cancel Tracking</span>
+              </button>
             ` : `
-              <span class="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider">Alternate</span>
+              <button onclick="event.stopPropagation(); if(currentTripPlanType!=='DIRECT') selectDirectOption(0, false); selectBus('${item.plate}'); startTracking();" class="w-full bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-bold text-xs py-2 px-3.5 rounded-xl shadow-md shadow-emerald-600/20 flex items-center justify-center gap-1.5 transition-all">
+                <i data-lucide="bus" class="w-3.5 h-3.5"></i>
+                <span>Track this bus</span>
+              </button>
             `}
           </div>
-          <span class="inline-flex items-center gap-1.5 text-[11px] font-bold text-emerald-600">
-            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            Live
-          </span>
-        </div>
+        `;
 
-        <div class="flex items-center justify-between mt-2.5 gap-2">
-          <div class="flex-1 min-w-0">
-            <div class="flex items-center gap-2">
-              <span class="text-xl sm:text-2xl font-black text-emerald-600 tracking-tight shrink-0">${item.bus.route}</span>
-              <span class="text-xs font-bold text-slate-800 truncate">
-                ${selectedPickupStop ? selectedPickupStop.name : 'Origin'} 
-                <span class="text-slate-400 font-normal">➔</span> 
-                ${selectedDestStop ? selectedDestStop.name : 'Destination'}
-              </span>
-            </div>
-            <div class="text-[10px] sm:text-[11px] text-slate-400 truncate mt-0.5">
-              Near ${item.currentLocationName}
-            </div>
+        allCards.push({ priority: 0, etaSec: item.etaSec, elem: card });
+      });
+    } else {
+      // Direct Scheduled Cards
+      lastSearchResult.direct.forEach((r, rIdx) => {
+        const config = window.ROUTES_DATABASE[r.routeKey];
+        if (!config) return;
+
+        const isSelected = (currentTripPlanType === "DIRECT" && activeRouteKey === r.routeKey);
+        const isCurrentlyTracked = isTrackingConfirmed && isSelected;
+
+        const card = document.createElement("div");
+        card.className = `bg-white border ${isSelected ? 'border-slate-500 ring-2 ring-slate-400/10' : 'border-slate-200'} rounded-2xl p-3 shadow-sm transition-all duration-200 mb-2.5`;
+        card.onclick = () => selectDirectOption(rIdx, isCurrentlyTracked);
+
+        card.innerHTML = `
+          <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+            <span class="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider">Direct Route</span>
+            <span class="text-[10px] sm:text-[11px] font-semibold text-slate-400">No Live GPS</span>
           </div>
-
-          <div class="text-right shrink-0">
-            <div class="text-base sm:text-lg font-black text-emerald-600 leading-tight">${item.etaLabel}</div>
-            <div class="text-[9px] sm:text-[10px] text-slate-400 whitespace-nowrap">${item.stopsAway === 0 ? 'Approaching' : `${item.stopsAway} stops away`}</div>
-          </div>
-        </div>
-
-        <div class="flex items-center justify-between text-[10px] sm:text-[11px] font-medium text-slate-500 mt-2.5 pt-2 border-t border-slate-100">
-          <span class="font-mono font-bold text-slate-700">${item.bus.plate}</span>
-          <span class="flex items-center gap-1 text-slate-500">
-            <i data-lucide="radio" class="w-3 h-3 text-slate-400"></i> Live
-          </span>
-          <span class="flex items-center gap-1 text-slate-600">
-            <i data-lucide="navigation" class="w-3 h-3 text-slate-400"></i> ${cardinalDir}
-          </span>
-        </div>
-
-        <div class="mt-2.5">
-          ${isCurrentlyTracked ? `
-            <button onclick="event.stopPropagation(); cancelTracking();" class="w-full bg-rose-600 hover:bg-rose-700 active:scale-[0.98] text-white font-bold text-xs py-2 px-3.5 rounded-xl shadow-md shadow-rose-600/20 flex items-center justify-center gap-1.5 transition-all">
-              <i data-lucide="x" class="w-3.5 h-3.5"></i>
-              <span>Cancel Tracking</span>
-            </button>
-          ` : `
-            <button onclick="event.stopPropagation(); selectBus('${item.plate}'); startTracking();" class="w-full bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-bold text-xs py-2 px-3.5 rounded-xl shadow-md shadow-emerald-600/20 flex items-center justify-center gap-1.5 transition-all">
-              <i data-lucide="bus" class="w-3.5 h-3.5"></i>
-              <span>Track this bus</span>
-            </button>
-          `}
-        </div>
-      `;
-
-      container.appendChild(card);
-    });
-  } else {
-    if (floatingCard) floatingCard.classList.add("hidden");
-    selectedBusPlate = null;
-
-    const corridorRoutes = (activeMatchingRoutes.length > 0) ? activeMatchingRoutes : (lastSearchResult?.direct || []);
-
-    corridorRoutes.forEach((r, rIdx) => {
-      const config = window.ROUTES_DATABASE[r.routeKey];
-      if (!config) return;
-
-      const isCurrentlyTracked = isTrackingConfirmed && currentTripPlanType === 'DIRECT' && activeRouteKey === r.routeKey;
-
-      const card = document.createElement("div");
-      card.className = "bg-white border border-slate-200 rounded-2xl p-3 shadow-sm transition-all duration-200 mb-2.5";
-      card.innerHTML = `
-        <div class="flex items-center justify-between pb-2 border-b border-slate-100">
-          <span class="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider">Scheduled Service</span>
-          <span class="text-[10px] sm:text-[11px] font-semibold text-slate-400">No Live GPS</span>
-        </div>
-        <div class="flex items-center justify-between mt-2.5">
-          <div class="flex items-center gap-2.5 min-w-0 pr-2">
-            <div class="text-xl sm:text-2xl font-black text-slate-600 tracking-tight shrink-0">${config.name}</div>
-            <div class="min-w-0">
-              <div class="text-xs font-bold text-slate-800 truncate">
-                ${selectedPickupStop ? selectedPickupStop.name : 'Origin'} ➔ ${selectedDestStop ? selectedDestStop.name : 'Destination'}
+          <div class="flex items-center justify-between mt-2.5">
+            <div class="flex items-center gap-2.5 min-w-0 pr-2">
+              <div class="text-xl sm:text-2xl font-black text-slate-600 tracking-tight shrink-0">${config.name}</div>
+              <div class="min-w-0">
+                <div class="text-xs font-bold text-slate-800 truncate">
+                  ${selectedPickupStop ? selectedPickupStop.name : 'Origin'} ➔ ${selectedDestStop ? selectedDestStop.name : 'Destination'}
+                </div>
+                <div class="text-[10px] text-slate-400">Timetable Route</div>
               </div>
-              <div class="text-[10px] text-slate-400">Timetable Route</div>
             </div>
           </div>
-        </div>
-        <div class="mt-2.5">
-          ${isCurrentlyTracked ? `
-            <button onclick="event.stopPropagation(); cancelTracking();" class="w-full bg-rose-600 hover:bg-rose-700 active:scale-[0.98] text-white font-bold text-xs py-2 px-3.5 rounded-xl shadow-md shadow-rose-600/20 flex items-center justify-center gap-1.5 transition-all">
-              <i data-lucide="x" class="w-3.5 h-3.5"></i>
-              <span>Cancel Tracking</span>
-            </button>
-          ` : `
-            <button onclick="event.stopPropagation(); selectDirectOption(${rIdx}, false); startTracking();" class="w-full bg-slate-700 hover:bg-slate-800 active:scale-[0.98] text-white font-bold text-xs py-2 px-3.5 rounded-xl shadow-md flex items-center justify-center gap-1.5 transition-all">
-              <i data-lucide="map-pin" class="w-3.5 h-3.5"></i>
-              <span>Track Scheduled Route</span>
-            </button>
-          `}
-        </div>
-      `;
-      container.appendChild(card);
-    });
+          <div class="mt-2.5">
+            ${isCurrentlyTracked ? `
+              <button onclick="event.stopPropagation(); cancelTracking();" class="w-full bg-rose-600 hover:bg-rose-700 active:scale-[0.98] text-white font-bold text-xs py-2 px-3.5 rounded-xl shadow-md shadow-rose-600/20 flex items-center justify-center gap-1.5 transition-all">
+                <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                <span>Cancel Tracking</span>
+              </button>
+            ` : `
+              <button onclick="event.stopPropagation(); selectDirectOption(${rIdx}, false); startTracking();" class="w-full bg-slate-700 hover:bg-slate-800 active:scale-[0.98] text-white font-bold text-xs py-2 px-3.5 rounded-xl shadow-md flex items-center justify-center gap-1.5 transition-all">
+                <i data-lucide="map-pin" class="w-3.5 h-3.5"></i>
+                <span>Track Scheduled Route</span>
+              </button>
+            `}
+          </div>
+        `;
+
+        allCards.push({ priority: 3, etaSec: Infinity, elem: card });
+      });
+    }
+  }
+
+  allCards.sort((a, b) => a.priority - b.priority || a.etaSec - b.etaSec);
+  allCards.forEach(c => container.appendChild(c.elem));
+
+  // Only reset scroll if Search was explicitly clicked; otherwise preserve manual scroll
+  if (shouldResetScrollOnNextRender) {
+    container.scrollTop = 0;
+    shouldResetScrollOnNextRender = false;
+  } else {
+    container.scrollTop = previousScrollTop;
   }
 
   lucide.createIcons();
