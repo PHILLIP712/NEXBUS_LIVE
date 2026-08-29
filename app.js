@@ -225,6 +225,9 @@ function calculateTripSummary(pickupStop, destStop, stopsList, effectiveSpeedKmp
   };
 }
 
+// ==========================================
+// ROBUST JITTER-PROOF DIRECTION STABILIZER
+// ==========================================
 function updateBusDirectionFromMovement(busPlate, newLat, newLng, newHeading, newSpeedKmph, payloadDir, routeConfig) {
   if (payloadDir && (payloadDir.toUpperCase() === "UP" || payloadDir.toUpperCase() === "DOWN")) {
     return payloadDir.toUpperCase();
@@ -283,6 +286,9 @@ function scrollTableToActiveRow(force = false) {
   }, 80);
 }
 
+// ==========================================
+// 3. AUTOCOMPLETE & SWAP ENGINE
+// ==========================================
 function getAllUniqueStops() {
   const mapUnique = new Map();
   if (!window.ROUTES_DATABASE) return [];
@@ -431,6 +437,9 @@ function closeBottomSheet() {
   }
 }
 
+// ==========================================
+// 4. SMART BANNER & ROUTE MODAL
+// ==========================================
 function updateDirectionBannerText() {
   const labelElem = document.getElementById("currentDirectionLabel");
   if (!labelElem) return;
@@ -551,6 +560,9 @@ function closeLinesModal() {
   if (modal) modal.classList.add("hidden");
 }
 
+// ==========================================
+// UNIVERSAL GEOMETRIC & DIRECTIONAL ENGINE
+// ==========================================
 function findMatchingRoutes(pName, dName) {
   let pNorm = normalizeStr(pName);
   let dNorm = normalizeStr(dName);
@@ -1469,6 +1481,9 @@ function selectBus(plate) {
   }
 }
 
+// ==========================================
+// 8. STOP TIMELINE TABLE (LIVE IN PREVIEW & TRACKING)
+// ==========================================
 function updateStopsTable(busLat, busLng, currentSpeedKmph) {
   if (!selectedPickupStop || !selectedDestStop) return;
 
@@ -1720,24 +1735,46 @@ function recenterMap() {
 // ==========================================
 updateAvailableBusesList();
 
-// Connect over secure WebSocket port 8884
+const connBadge = document.getElementById('connBadge');
+
 const client = mqtt.connect('wss://broker.hivemq.com:8884/mqtt', {
   clientId: 'WebClient_' + Math.random().toString(16).substr(2, 8),
   keepalive: 60,
-  clean: true
+  clean: true,
+  reconnectPeriod: 3000
 });
 
 client.on('connect', () => {
   console.log('Connected to HiveMQ Unified Fleet WebSocket Hub');
-  // Wildcard subscription captures every active bus on the fleet topic
+  if (connBadge) {
+    connBadge.className = "px-2.5 py-1 rounded-full font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-sm flex items-center gap-1";
+    connBadge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span><span>Live Connected</span>`;
+  }
   client.subscribe('citytransit/fleet/#', (err) => {
     if (err) console.error('Subscription error:', err);
   });
 });
 
+client.on('reconnect', () => {
+  if (connBadge) {
+    connBadge.className = "px-2.5 py-1 rounded-full font-bold bg-amber-50 text-amber-700 border border-amber-200 shadow-sm flex items-center gap-1";
+    connBadge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span><span>Reconnecting...</span>`;
+  }
+});
+
+client.on('offline', () => {
+  if (connBadge) {
+    connBadge.className = "px-2.5 py-1 rounded-full font-bold bg-rose-50 text-rose-700 border border-rose-200 shadow-sm flex items-center gap-1";
+    connBadge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-rose-500"></span><span>Offline</span>`;
+  }
+});
+
 client.on('message', (topic, message) => {
   try {
-    const d = JSON.parse(message.toString());
+    const rawPayload = message.toString().trim();
+    if (!rawPayload) return; // Ignore blank or malformed test pings
+
+    const d = JSON.parse(rawPayload);
     if (!d || !d.lat || !d.lng || !window.ROUTES_DATABASE) return;
 
     const busPlate = d.bus_no || "WB42U2676";
@@ -1785,6 +1822,9 @@ client.on('message', (topic, message) => {
         icon: createDynamicBusMapIcon(routeConfig.name, busPlate, busHeading, destTerminal)
       }).addTo(map);
       breadcrumbLines[busPlate] = L.polyline([], { color: '#0284c7', weight: 4 }).addTo(map);
+      
+      // Auto pan to first live vehicle
+      map.panTo(pos);
     } else {
       activeBusMarkers[busPlate].setLatLng(pos);
       activeBusMarkers[busPlate].setIcon(createDynamicBusMapIcon(routeConfig.name, busPlate, busHeading, destTerminal));

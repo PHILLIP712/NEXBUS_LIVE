@@ -5,17 +5,17 @@
 #include <TinyGPSPlus.h>
 
 // ============================================================
-// HARDWARE & VEHICLE CONFIGURATION (EDIT FOR EACH VEHICLE)
+// HARDWARE & VEHICLE CONFIGURATION
 // ============================================================
-const char* ROUTE_ID          = "77A_NOBATA";   // Route matching routes.js
-const char* BUS_PLATE         = "WB42U2676";    // Bus Number Plate
-const char* APN               = "bsnlnet";      // Cellular APN
+const char* ROUTE_ID          = "77A_NOBATA";
+const char* BUS_PLATE         = "WB42U2676";
+const char* APN               = "bsnlnet";
 const char* GPRS_USER         = "";
 const char* GPRS_PASS         = "";
 
 const char* MQTT_BROKER       = "broker.hivemq.com";
 const int   MQTT_PORT         = 1883;
-const unsigned long SEND_INTERVAL = 3000;       // Broadcast every 3 seconds
+const unsigned long SEND_INTERVAL = 3000;
 // ============================================================
 
 // SoftwareSerial for SIM800L (RX=D2/GPIO4, TX=D1/GPIO5)
@@ -30,6 +30,7 @@ TinyGPSPlus gps;
 
 const int GSM_RESET_PIN = 13; // D7
 unsigned long lastSendTime = 0;
+unsigned long lastReconnectAttempt = 0;
 
 void setup() {
   Serial.begin(115200);
@@ -44,77 +45,86 @@ void setup() {
 
   Serial.println("\n--- Starting Scalable Fleet Tracker ---");
 
-  // Hardware reboot SIM800L
+  // Hardware Reset SIM800L
   digitalWrite(GSM_RESET_PIN, LOW);
   delay(1000);
   digitalWrite(GSM_RESET_PIN, HIGH);
-  delay(5000);
+  delay(3000);
 
-  modem.restart();
-  connectCellularAndMQTT();
+  modem.init();
+  mqttClient.setServer(MQTT_BROKER, MQTT_PORT);
+  mqttClient.setSocketTimeout(15); // Increase socket timeout for 2G network latency
 }
 
 void loop() {
-  // Feed GPS parser
+  // 1. Continuous GPS decoding
   while (gpsSerial.available() > 0) {
     gps.encode(gpsSerial.read());
     yield();
   }
 
-  // Maintain MQTT session
+  // 2. Multi-stage Network & MQTT Maintenance
   if (!mqttClient.connected()) {
-    reconnectMQTT();
+    unsigned long now = millis();
+    if (now - lastReconnectAttempt > 5000) {
+      lastReconnectAttempt = now;
+      maintainConnection();
+    }
+  } else {
+    mqttClient.loop();
   }
-  mqttClient.loop();
 
-  // Periodic Telemetry Broadcast
+  // 3. Periodic Broadcast
   unsigned long now = millis();
   if (now - lastSendTime >= SEND_INTERVAL) {
     lastSendTime = now;
 
-    if (gps.location.isValid() && gps.location.lat() != 0.0) {
-      publishTelemetry();
-    } else {
-      Serial.println("Acquiring GPS fix...");
+    if (mqttClient.connected()) {
+      if (gps.location.isValid() && gps.location.lat() != 0.0) {
+        publishTelemetry();
+      } else {
+        Serial.println("Waiting for outdoor GPS satellite fix...");
+      }
     }
   }
 }
 
-void connectCellularAndMQTT() {
-  Serial.print("Connecting to cellular network...");
-  if (!modem.waitForNetwork(30000)) {
-    Serial.println(" FAIL");
-    return;
+void maintainConnection() {
+  // Step A: Check Cellular Network Registration
+  if (!modem.isNetworkConnected()) {
+    Serial.print("Searching Cellular Network...");
+    if (!modem.waitForNetwork(15000)) {
+      Serial.println(" NOT REGISTERED (Check antenna / power)");
+      return;
+    }
+    Serial.println(" REGISTERED");
   }
-  Serial.println(" OK");
 
-  Serial.print("Connecting to GPRS (");
-  Serial.print(APN);
-  Serial.print(")...");
-  if (!modem.gprsConnect(APN, GPRS_USER, GPRS_PASS)) {
-    Serial.println(" FAIL");
-    return;
+  // Step B: Attach GPRS Data Context
+  if (!modem.isGprsConnected()) {
+    Serial.print("Attaching GPRS (");
+    Serial.print(APN);
+    Serial.print(")...");
+    if (!modem.gprsConnect(APN, GPRS_USER, GPRS_PASS)) {
+      Serial.println(" GPRS FAIL");
+      return;
+    }
+    Serial.println(" GPRS ATTACHED");
   }
-  Serial.println(" OK");
 
-  mqttClient.setServer(MQTT_BROKER, MQTT_PORT);
-  reconnectMQTT();
-}
-
-void reconnectMQTT() {
-  while (!mqttClient.connected()) {
+  // Step C: Establish MQTT Socket
+  if (!mqttClient.connected()) {
     String clientId = "BusFleet-" + String(BUS_PLATE) + "-" + String(random(1000, 9999));
-    Serial.print("Connecting to MQTT Broker as ");
+    Serial.print("Connecting to HiveMQ as ");
     Serial.print(clientId);
     Serial.print("...");
 
     if (mqttClient.connect(clientId.c_str())) {
-      Serial.println(" Connected!");
+      Serial.println(" CONNECTED!");
     } else {
-      Serial.print(" Failed (rc=");
+      Serial.print(" FAIL (rc=");
       Serial.print(mqttClient.state());
-      Serial.println("). Retrying in 3s...");
-      delay(3000);
+      Serial.println(")");
     }
   }
 }
@@ -135,9 +145,7 @@ void publishTelemetry() {
   String topic = "citytransit/fleet/" + String(ROUTE_ID) + "/" + String(BUS_PLATE) + "/data";
   topic.toLowerCase();
 
-  Serial.print("Publishing to ");
-  Serial.print(topic);
-  Serial.print(": ");
+  Serial.print("Published: ");
   Serial.println(payload);
 
   mqttClient.publish(topic.c_str(), payload.c_str());
