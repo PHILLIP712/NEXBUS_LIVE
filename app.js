@@ -130,12 +130,10 @@ function createDynamicBusMapIcon(routeString, busPlate, heading = 0, destTermina
     className: '',
     html: `
       <div class="bus-marker-wrapper flex flex-col items-center">
-        <!-- Top Route Tag -->
         <div class="bus-tag-top whitespace-nowrap px-2 py-0.5 rounded shadow text-[10px] font-extrabold bg-sky-600 text-white flex items-center gap-1">
           <span>${tagLabel}</span>
         </div>
 
-        <!-- Bus Icon Container with Heading Pointer -->
         <div class="relative w-9 h-9 flex items-center justify-center my-0.5">
           <div class="bus-pulse"></div>
           
@@ -148,7 +146,6 @@ function createDynamicBusMapIcon(routeString, busPlate, heading = 0, destTermina
           </div>
         </div>
 
-        <!-- Bottom Plate Tag -->
         <div class="bus-tag-bottom px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-900 text-white border border-slate-700 shadow font-mono">
           ${busPlate}
         </div>
@@ -350,16 +347,15 @@ function updateBusDirectionFromMovement(busPlate, newLat, newLng, newHeading, ne
   return prev ? (prev.busDir || "UP") : "UP";
 }
 
+// Viewport auto-scroll that never overflows the container
 function scrollTableToActiveRow(force = false) {
   if (!isTrackingConfirmed && !force) return;
   if (hasAutoScrolledForCurrentTrip && !force) return;
 
   setTimeout(() => {
-    const tableContainer = document.querySelector("#scheduleContentArea");
     const activeRow = document.querySelector(".active-target-stop");
-    if (tableContainer && activeRow) {
-      const topOffset = activeRow.offsetTop - tableContainer.offsetTop - 50;
-      tableContainer.scrollTo({ top: Math.max(0, topOffset), behavior: "smooth" });
+    if (activeRow) {
+      activeRow.scrollIntoView({ behavior: "smooth", block: "nearest" });
       hasAutoScrolledForCurrentTrip = true;
     }
   }, 80);
@@ -531,7 +527,7 @@ function updateDirectionBannerText() {
         <span class="bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded text-[9px] font-extrabold shrink-0">1 TRANSFER</span>
         <span class="text-slate-900 font-bold">${r1Name}</span>
         <span class="text-slate-400">➔</span>
-        <span class="text-sky-800 font-bold truncate">Change at ${activeTransferPlan.transferStopName}</span>
+        <span class="text-sky-800 font-bold">Change at ${activeTransferPlan.transferStopName}</span>
         <span class="text-slate-400">➔</span>
         <span class="text-slate-900 font-bold">${r2Name}</span>
       </div>
@@ -548,7 +544,7 @@ function updateDirectionBannerText() {
           <span>${totalLines} LINES</span>
           <i data-lucide="chevron-right" class="w-3 h-3"></i>
         </button>
-        <div class="flex items-center gap-1 text-xs font-bold text-slate-800 truncate">
+        <div class="flex items-center gap-1 text-xs font-bold text-slate-800">
           <span>${selectedPickupStop.name}</span>
           <span class="text-emerald-600 font-bold">➔</span>
           <span>${selectedDestStop.name}</span>
@@ -564,10 +560,12 @@ function updateDirectionBannerText() {
   if (!routeConfig) return;
 
   labelElem.innerHTML = `
-    <span class="text-slate-900 font-bold">${routeConfig.name}:</span> 
-    <span class="text-slate-800 font-semibold">${selectedPickupStop.name}</span> 
-    <span class="text-emerald-600 font-bold">➔</span> 
-    <span class="text-slate-800 font-semibold">${selectedDestStop.name}</span>
+    <div class="flex items-center gap-1.5 flex-wrap">
+      <span class="text-slate-900 font-bold">${routeConfig.name}:</span> 
+      <span class="text-slate-800 font-semibold">${selectedPickupStop.name}</span> 
+      <span class="text-emerald-600 font-bold">➔</span> 
+      <span class="text-slate-800 font-semibold">${selectedDestStop.name}</span>
+    </div>
   `;
 }
 
@@ -1051,6 +1049,9 @@ function cancelTracking() {
   }
 }
 
+// ==========================================
+// 6. UNIFIED SCHEDULE TIMELINE PREVIEW
+// ==========================================
 function renderSchedulePreview() {
   if (!isTrackingConfirmed) {
     document.getElementById("stopsTable")?.classList.add("hidden");
@@ -1064,6 +1065,7 @@ function renderSchedulePreview() {
   const tbody = document.getElementById("stopsTableBody");
   tbody.innerHTML = "";
 
+  // 1-TRANSFER SCHEDULE
   if (currentTripPlanType === "TRANSFER" && activeTransferPlan) {
     const leg1Stops = activeTransferPlan.leg1.stops.slice(activeTransferPlan.leg1.pIdx, activeTransferPlan.leg1.tIdx + 1);
     const leg2Stops = activeTransferPlan.leg2.stops.slice(activeTransferPlan.leg2.tIdx + 1, activeTransferPlan.leg2.dIdx + 1);
@@ -1083,11 +1085,11 @@ function renderSchedulePreview() {
       const tr = document.createElement("tr");
       if (rowClass) tr.className = rowClass;
       tr.innerHTML = `
-        <td class="p-2 sm:p-2.5 pl-3 sm:pl-4">${stepNum++}</td>
-        <td class="p-2 sm:p-2.5 font-semibold text-slate-800">${stop.name} <span class="text-[9px] text-sky-700 font-bold">(${r1Name})</span></td>
-        <td class="p-2 sm:p-2.5 text-slate-400 hidden sm:table-cell">--</td>
-        <td class="p-2 sm:p-2.5 text-slate-500 text-[11px]">${isBoarding ? "Board First Bus" : (isTransferPoint ? "Alight for Transfer" : "Ride")}</td>
-        <td class="p-2 sm:p-2.5 pr-3 sm:pr-4 text-right sm:text-left"><span class="px-1.5 sm:px-2 py-0.5 rounded text-[10px] sm:text-[11px] font-bold bg-slate-100 text-slate-500">Scheduled</span></td>
+        <td class="py-2 px-1.5 sm:p-2.5 pl-2.5 sm:pl-4 font-bold">${stepNum++}</td>
+        <td class="py-2 px-1.5 sm:p-2.5 font-semibold text-slate-800">${stop.name} <span class="text-[9px] text-sky-700 font-bold">(${r1Name})</span></td>
+        <td class="py-2 px-1.5 sm:p-2.5 text-slate-400 whitespace-nowrap">--</td>
+        <td class="py-2 px-1.5 sm:p-2.5 text-slate-500 text-[10px] sm:text-[11px]">${isBoarding ? "Board First Bus" : (isTransferPoint ? "Alight for Transfer" : "Ride")}</td>
+        <td class="py-2 px-1.5 sm:p-2.5 pr-2.5 sm:pr-4 text-right sm:text-left"><span class="px-1.5 sm:px-2 py-0.5 rounded text-[10px] sm:text-[11px] font-bold bg-slate-100 text-slate-500">Scheduled</span></td>
       `;
       tbody.appendChild(tr);
     });
@@ -1105,11 +1107,11 @@ function renderSchedulePreview() {
       const tr = document.createElement("tr");
       if (isFinal) tr.className = "bg-rose-50/80 border-l-4 border-rose-500 font-bold text-slate-900";
       tr.innerHTML = `
-        <td class="p-2 sm:p-2.5 pl-3 sm:pl-4">${rideStepNum++}</td>
-        <td class="p-2 sm:p-2.5 font-semibold text-slate-800">${stop.name} <span class="text-[9px] text-amber-700 font-bold">(${r2Name})</span></td>
-        <td class="p-2 sm:p-2.5 text-slate-400 hidden sm:table-cell">--</td>
-        <td class="p-2 sm:p-2.5 text-slate-500 text-[11px]">${isFinal ? "🏁 Final Destination" : "Connecting Ride"}</td>
-        <td class="p-2 sm:p-2.5 pr-3 sm:pr-4 text-right sm:text-left"><span class="px-1.5 sm:px-2 py-0.5 rounded text-[10px] sm:text-[11px] font-bold bg-slate-100 text-slate-500">Scheduled</span></td>
+        <td class="py-2 px-1.5 sm:p-2.5 pl-2.5 sm:pl-4 font-bold">${stepNum++}</td>
+        <td class="py-2 px-1.5 sm:p-2.5 font-semibold text-slate-800">${stop.name} <span class="text-[9px] text-amber-700 font-bold">(${r2Name})</span></td>
+        <td class="py-2 px-1.5 sm:p-2.5 text-slate-400 whitespace-nowrap">--</td>
+        <td class="py-2 px-1.5 sm:p-2.5 text-slate-500 text-[10px] sm:text-[11px]">${isFinal ? "🏁 Final Destination" : "Connecting Ride"}</td>
+        <td class="py-2 px-1.5 sm:p-2.5 pr-2.5 sm:pr-4 text-right sm:text-left"><span class="px-1.5 sm:px-2 py-0.5 rounded text-[10px] sm:text-[11px] font-bold bg-slate-100 text-slate-500">Scheduled</span></td>
       `;
       tbody.appendChild(tr);
     });
@@ -1118,29 +1120,38 @@ function renderSchedulePreview() {
     return;
   }
 
+  // DIRECT ROUTE SCHEDULE (Identical presentation & step progress)
   const pIdx = selectedPickupStop ? findStopIndexInList(currentStopsList, selectedPickupStop) : 0;
   const dIdx = selectedDestStop ? findStopIndexInList(currentStopsList, selectedDestStop) : currentStopsList.length - 1;
 
   const validP = (pIdx !== -1) ? pIdx : 0;
   const validD = (dIdx !== -1 && dIdx >= validP) ? dIdx : currentStopsList.length - 1;
   const journeyStops = currentStopsList.slice(validP, validD + 1);
+  const rName = window.ROUTES_DATABASE[activeRouteKey]?.name || "Direct";
 
   journeyStops.forEach((stop, idx) => {
+    const isBoarding = (idx === 0);
+    const isFinal = (idx === journeyStops.length - 1);
+
     let rowClass = "";
-    if (idx === 0) {
+    let progressLabel = "Ride";
+
+    if (isBoarding) {
       rowClass = "bg-emerald-50/80 border-l-4 border-emerald-500 font-bold text-slate-900 active-target-stop";
-    } else if (idx === journeyStops.length - 1) {
+      progressLabel = "Board Bus";
+    } else if (isFinal) {
       rowClass = "bg-rose-50/80 border-l-4 border-rose-500 font-bold text-slate-900";
+      progressLabel = "🏁 Final Destination";
     }
 
     const tr = document.createElement("tr");
     if (rowClass) tr.className = rowClass;
     tr.innerHTML = `
-      <td class="p-2 sm:p-2.5 pl-3 sm:pl-4">${idx + 1}</td>
-      <td class="p-2 sm:p-2.5 font-medium">${stop.name}</td>
-      <td class="p-2 sm:p-2.5 text-slate-400 hidden sm:table-cell">--</td>
-      <td class="p-2 sm:p-2.5 text-slate-400 text-[11px]">--</td>
-      <td class="p-2 sm:p-2.5 pr-3 sm:pr-4 text-right sm:text-left"><span class="px-1.5 sm:px-2 py-0.5 rounded text-[10px] sm:text-[11px] font-bold bg-slate-100 text-slate-500">Scheduled</span></td>
+      <td class="py-2 px-1.5 sm:p-2.5 pl-2.5 sm:pl-4 font-bold">${idx + 1}</td>
+      <td class="py-2 px-1.5 sm:p-2.5 font-semibold text-slate-800">${stop.name} <span class="text-[9px] text-sky-700 font-bold">(${rName})</span></td>
+      <td class="py-2 px-1.5 sm:p-2.5 text-slate-400 whitespace-nowrap">--</td>
+      <td class="py-2 px-1.5 sm:p-2.5 text-slate-500 text-[10px] sm:text-[11px]">${progressLabel}</td>
+      <td class="py-2 px-1.5 sm:p-2.5 pr-2.5 sm:pr-4 text-right sm:text-left"><span class="px-1.5 sm:px-2 py-0.5 rounded text-[10px] sm:text-[11px] font-bold bg-slate-100 text-slate-500">Scheduled</span></td>
     `;
     tbody.appendChild(tr);
   });
@@ -1337,6 +1348,9 @@ function renderRoutePins(autoFit = false) {
   });
 }
 
+// ==========================================
+// 7. UNIFIED BUS & ROUTE LIST RENDERER
+// ==========================================
 function updateAvailableBusesList() {
   const container = document.getElementById("busesListContainer");
   const floatingCard = document.getElementById("floatingBusCard");
@@ -1413,12 +1427,6 @@ function updateAvailableBusesList() {
 
       const isCurrentlyTracked = isTrackingConfirmed && isSelectedPlan;
 
-      const btnBg = isLeg1Live 
-        ? "bg-violet-600 hover:bg-violet-700 shadow-violet-600/20" 
-        : "bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/20";
-      const btnText = isLeg1Live ? "Track this bus & route" : "Track this route";
-      const btnIcon = isLeg1Live ? "bus" : "git-merge";
-
       let badgeHtml = '';
       if (isAllLive) {
         badgeHtml = `
@@ -1436,12 +1444,12 @@ function updateAvailableBusesList() {
         badgeHtml = `
           <span class="inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-400">
             <span class="w-2 h-2 rounded-full bg-slate-300"></span>
-            Scheduled
+            No Active Bus
           </span>`;
       }
 
       const card = document.createElement("div");
-      card.className = `bg-white border ${isSelectedPlan ? (isLeg1Live ? 'border-violet-500 ring-2 ring-violet-500/10' : 'border-indigo-500 ring-2 ring-indigo-500/10') : 'border-slate-200'} hover:border-violet-500 rounded-2xl p-3 shadow-sm transition-all duration-200 hover:shadow-md cursor-pointer mb-2.5`;
+      card.className = `bg-white border ${isSelectedPlan ? (isLeg1Live ? 'border-violet-500 ring-2 ring-violet-500/10' : 'border-slate-400 ring-2 ring-slate-400/10') : 'border-slate-200'} hover:border-violet-500 rounded-2xl p-3 shadow-sm transition-all duration-200 hover:shadow-md cursor-pointer mb-2.5`;
       card.onclick = () => {
         selectTransferOption(planIdx, isCurrentlyTracked);
       };
@@ -1462,13 +1470,13 @@ function updateAvailableBusesList() {
 
         <div class="mt-2.5">
           <div class="flex items-baseline justify-between gap-2">
-            <div class="text-base sm:text-lg font-black ${isLeg1Live ? 'text-violet-700' : 'text-indigo-600'} tracking-tight flex items-center gap-1.5 flex-wrap">
+            <div class="text-base sm:text-lg font-black ${isLeg1Live ? 'text-violet-700' : 'text-slate-700'} tracking-tight flex items-center gap-1.5 flex-wrap">
               <span>${r1Name}</span>
               <span class="text-xs text-slate-400 font-normal">➔</span>
               <span>${r2Name}</span>
             </div>
             <div class="text-right shrink-0">
-              <div class="text-sm sm:text-base font-black ${isLeg1Live ? 'text-emerald-600' : 'text-slate-700'} leading-tight">${etaStr}</div>
+              <div class="text-sm sm:text-base font-black ${isLeg1Live ? 'text-emerald-600' : 'text-slate-600'} leading-tight">${etaStr}</div>
               <div class="text-[9px] sm:text-[10px] text-slate-400">${isLeg1Live ? 'to pickup' : 'Timetable'}</div>
             </div>
           </div>
@@ -1478,7 +1486,7 @@ function updateAvailableBusesList() {
             <span class="text-slate-400 font-normal">➔</span> 
             ${selectedDestStop ? selectedDestStop.name : 'Destination'}
           </div>
-          <div class="text-[10px] text-amber-800 font-semibold mt-0.5 flex items-center gap-1 truncate">
+          <div class="text-[10px] ${isLeg1Live ? 'text-amber-800' : 'text-slate-500'} font-semibold mt-0.5 flex items-center gap-1 truncate">
             <span>🔄 Change:</span>
             <span class="underline truncate">${plan.transferStopName}</span>
             <span class="text-slate-400 font-normal shrink-0">(${totalStops} stops)</span>
@@ -1486,12 +1494,12 @@ function updateAvailableBusesList() {
         </div>
 
         <div class="flex items-center justify-between text-[10px] sm:text-[11px] font-medium text-slate-500 mt-2.5 pt-2 border-t border-slate-100">
-          <span class="font-mono font-bold text-slate-700">${liveBus ? liveBus.plate : 'Timetable'}</span>
-          <span class="flex items-center gap-1">
-            <i data-lucide="radio" class="w-3 h-3 text-slate-400"></i> ${isAllLive ? 'Full Live' : (isPartialLive ? 'Partial Live' : 'Regular')}
+          <span class="font-mono font-bold text-slate-600">${liveBus ? liveBus.plate : 'Timetable'}</span>
+          <span class="flex items-center gap-1 text-slate-500">
+            <i data-lucide="${isLeg1Live ? 'radio' : 'calendar'}" class="w-3 h-3 text-slate-400"></i> ${isAllLive ? 'Full Live' : (isPartialLive ? 'Partial Live' : 'Scheduled')}
           </span>
-          <span class="flex items-center gap-1 text-slate-600">
-            <i data-lucide="map-pin" class="w-3 h-3 text-slate-400"></i> Change Hub
+          <span class="flex items-center gap-1 text-slate-500">
+            <i data-lucide="git-merge" class="w-3 h-3 text-slate-400"></i> Change Hub
           </span>
         </div>
 
@@ -1502,9 +1510,9 @@ function updateAvailableBusesList() {
               <span>Cancel Tracking</span>
             </button>
           ` : `
-            <button onclick="event.stopPropagation(); selectTransferOption(${planIdx}, false); startTracking();" class="w-full ${btnBg} active:scale-[0.98] text-white font-bold text-xs py-2 px-3.5 rounded-xl shadow-md flex items-center justify-center gap-1.5 transition-all">
-              <i data-lucide="${btnIcon}" class="w-3.5 h-3.5"></i>
-              <span>${btnText}</span>
+            <button onclick="event.stopPropagation(); selectTransferOption(${planIdx}, false); startTracking();" class="w-full ${isLeg1Live ? 'bg-violet-600 hover:bg-violet-700 shadow-violet-600/20' : 'bg-slate-800 hover:bg-slate-900'} active:scale-[0.98] text-white font-bold text-xs py-2 px-3.5 rounded-xl shadow-md flex items-center justify-center gap-1.5 transition-all">
+              <i data-lucide="${isLeg1Live ? 'bus' : 'git-merge'}" class="w-3.5 h-3.5"></i>
+              <span>${isLeg1Live ? 'Track this bus & route' : 'Track Scheduled Route'}</span>
             </button>
           `}
         </div>
@@ -1655,34 +1663,62 @@ function updateAvailableBusesList() {
         allCards.push({ priority: 0, etaSec: item.etaSec, elem: card });
       });
     } else {
-      // Direct Scheduled Cards
+      // Direct Scheduled Cards (Unified Design matching Transfer Scheduled cards)
       lastSearchResult.direct.forEach((r, rIdx) => {
         const config = window.ROUTES_DATABASE[r.routeKey];
         if (!config) return;
 
         const isSelected = (currentTripPlanType === "DIRECT" && activeRouteKey === r.routeKey);
         const isCurrentlyTracked = isTrackingConfirmed && isSelected;
+        const totalStopsCount = Math.max(1, (r.dIdx - r.pIdx + 1));
 
         const card = document.createElement("div");
-        card.className = `bg-white border ${isSelected ? 'border-slate-500 ring-2 ring-slate-400/10' : 'border-slate-200'} rounded-2xl p-3 shadow-sm transition-all duration-200 mb-2.5`;
+        card.className = `bg-white border ${isSelected ? 'border-slate-400 ring-2 ring-slate-400/10' : 'border-slate-200'} hover:border-slate-400 rounded-2xl p-3 shadow-sm transition-all duration-200 hover:shadow-md cursor-pointer mb-2.5`;
         card.onclick = () => selectDirectOption(rIdx, isCurrentlyTracked);
 
         card.innerHTML = `
           <div class="flex items-center justify-between pb-2 border-b border-slate-100">
-            <span class="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider">Direct Route</span>
-            <span class="text-[10px] sm:text-[11px] font-semibold text-slate-400">No Live GPS</span>
+            <div>
+              <span class="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider">Direct Route</span>
+            </div>
+            <span class="inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-400">
+              <span class="w-2 h-2 rounded-full bg-slate-300"></span>
+              No Active Bus
+            </span>
           </div>
-          <div class="flex items-center justify-between mt-2.5">
-            <div class="flex items-center gap-2.5 min-w-0 pr-2">
-              <div class="text-xl sm:text-2xl font-black text-slate-600 tracking-tight shrink-0">${config.name}</div>
-              <div class="min-w-0">
-                <div class="text-xs font-bold text-slate-800 truncate">
-                  ${selectedPickupStop ? selectedPickupStop.name : 'Origin'} ➔ ${selectedDestStop ? selectedDestStop.name : 'Destination'}
-                </div>
-                <div class="text-[10px] text-slate-400">Timetable Route</div>
+
+          <div class="mt-2.5">
+            <div class="flex items-baseline justify-between gap-2">
+              <div class="text-base sm:text-lg font-black text-slate-700 tracking-tight truncate">
+                ${config.name}
+              </div>
+              <div class="text-right shrink-0">
+                <div class="text-sm sm:text-base font-black text-slate-600 leading-tight">Scheduled</div>
+                <div class="text-[9px] sm:text-[10px] text-slate-400">Timetable</div>
               </div>
             </div>
+
+            <div class="text-xs font-bold text-slate-800 truncate mt-1">
+              ${selectedPickupStop ? selectedPickupStop.name : 'Origin'} 
+              <span class="text-slate-400 font-normal">➔</span> 
+              ${selectedDestStop ? selectedDestStop.name : 'Destination'}
+            </div>
+            <div class="text-[10px] text-slate-500 font-semibold mt-0.5 flex items-center gap-1 truncate">
+              <span>Direct Corridor</span>
+              <span class="text-slate-400 font-normal shrink-0">(${totalStopsCount} stops)</span>
+            </div>
           </div>
+
+          <div class="flex items-center justify-between text-[10px] sm:text-[11px] font-medium text-slate-500 mt-2.5 pt-2 border-t border-slate-100">
+            <span class="font-mono font-bold text-slate-600">Timetable</span>
+            <span class="flex items-center gap-1 text-slate-500">
+              <i data-lucide="calendar" class="w-3 h-3 text-slate-400"></i> Scheduled
+            </span>
+            <span class="flex items-center gap-1 text-slate-500">
+              <i data-lucide="map-pin" class="w-3 h-3 text-slate-400"></i> Direct Line
+            </span>
+          </div>
+
           <div class="mt-2.5">
             ${isCurrentlyTracked ? `
               <button onclick="event.stopPropagation(); cancelTracking();" class="w-full bg-rose-600 hover:bg-rose-700 active:scale-[0.98] text-white font-bold text-xs py-2 px-3.5 rounded-xl shadow-md shadow-rose-600/20 flex items-center justify-center gap-1.5 transition-all">
@@ -1690,7 +1726,7 @@ function updateAvailableBusesList() {
                 <span>Cancel Tracking</span>
               </button>
             ` : `
-              <button onclick="event.stopPropagation(); selectDirectOption(${rIdx}, false); startTracking();" class="w-full bg-slate-700 hover:bg-slate-800 active:scale-[0.98] text-white font-bold text-xs py-2 px-3.5 rounded-xl shadow-md flex items-center justify-center gap-1.5 transition-all">
+              <button onclick="event.stopPropagation(); selectDirectOption(${rIdx}, false); startTracking();" class="w-full bg-slate-800 hover:bg-slate-900 active:scale-[0.98] text-white font-bold text-xs py-2 px-3.5 rounded-xl shadow-md flex items-center justify-center gap-1.5 transition-all">
                 <i data-lucide="map-pin" class="w-3.5 h-3.5"></i>
                 <span>Track Scheduled Route</span>
               </button>
@@ -1741,7 +1777,7 @@ function selectBus(plate) {
 }
 
 // ==========================================
-// 8. STOP TIMELINE TABLE
+// 8. STOP TIMELINE TABLE (LIVE GPS STREAM)
 // ==========================================
 function updateStopsTable(busLat, busLng, currentSpeedKmph) {
   if (!isTrackingConfirmed || !selectedPickupStop || !selectedDestStop) {
@@ -1848,11 +1884,11 @@ function updateStopsTable(busLat, busLng, currentSpeedKmph) {
       const tr = document.createElement("tr");
       if (rowClass) tr.className = rowClass;
       tr.innerHTML = `
-        <td class="p-2 sm:p-2.5 pl-3 sm:pl-4">${displayStepNum}</td>
-        <td class="p-2 sm:p-2.5 font-semibold text-slate-800">${stop.name} <span class="text-[9px] text-sky-700 font-bold">(${r1Name})</span></td>
-        <td class="p-2 sm:p-2.5 text-slate-600 hidden sm:table-cell">${distLabel}</td>
-        <td class="p-2 sm:p-2.5 text-slate-600 text-[11px]">${remLabel}</td>
-        <td class="p-2 sm:p-2.5 pr-3 sm:pr-4 text-right sm:text-left"><span class="px-1.5 sm:px-2 py-0.5 rounded text-[10px] sm:text-[11px] font-bold ${badgeClass}">${etaLabel}</span></td>
+        <td class="py-2 px-1.5 sm:p-2.5 pl-2.5 sm:pl-4 font-bold">${displayStepNum}</td>
+        <td class="py-2 px-1.5 sm:p-2.5 font-semibold text-slate-800">${stop.name} <span class="text-[9px] text-sky-700 font-bold">(${r1Name})</span></td>
+        <td class="py-2 px-1.5 sm:p-2.5 text-slate-600 font-medium whitespace-nowrap">${distLabel}</td>
+        <td class="py-2 px-1.5 sm:p-2.5 text-slate-600 text-[10px] sm:text-[11px]">${remLabel}</td>
+        <td class="py-2 px-1.5 sm:p-2.5 pr-2.5 sm:pr-4 text-right sm:text-left"><span class="px-1.5 sm:px-2 py-0.5 rounded text-[10px] sm:text-[11px] font-bold ${badgeClass}">${etaLabel}</span></td>
       `;
       tbody.appendChild(tr);
     });
@@ -1870,11 +1906,11 @@ function updateStopsTable(busLat, busLng, currentSpeedKmph) {
       const tr = document.createElement("tr");
       if (isFinal) tr.className = "bg-rose-50/80 border-l-4 border-rose-500 font-bold text-slate-900";
       tr.innerHTML = `
-        <td class="p-2 sm:p-2.5 pl-3 sm:pl-4">${rideStepNum++}</td>
-        <td class="p-2 sm:p-2.5 font-semibold text-slate-800">${stop.name} <span class="text-[9px] text-amber-700 font-bold">(${r2Name})</span></td>
-        <td class="p-2 sm:p-2.5 text-slate-400 hidden sm:table-cell">--</td>
-        <td class="p-2 sm:p-2.5 text-slate-500 text-[11px]">${isFinal ? "🏁 Final Destination" : "Connecting Ride"}</td>
-        <td class="p-2 sm:p-2.5 pr-3 sm:pr-4 text-right sm:text-left"><span class="px-1.5 sm:px-2 py-0.5 rounded text-[10px] sm:text-[11px] font-bold bg-slate-100 text-slate-500">Scheduled</span></td>
+        <td class="py-2 px-1.5 sm:p-2.5 pl-2.5 sm:pl-4 font-bold">${rideStepNum++}</td>
+        <td class="py-2 px-1.5 sm:p-2.5 font-semibold text-slate-800">${stop.name} <span class="text-[9px] text-amber-700 font-bold">(${r2Name})</span></td>
+        <td class="py-2 px-1.5 sm:p-2.5 text-slate-400 whitespace-nowrap">--</td>
+        <td class="py-2 px-1.5 sm:p-2.5 text-slate-500 text-[10px] sm:text-[11px]">${isFinal ? "🏁 Final Destination" : "Connecting Ride"}</td>
+        <td class="py-2 px-1.5 sm:p-2.5 pr-2.5 sm:pr-4 text-right sm:text-left"><span class="px-1.5 sm:px-2 py-0.5 rounded text-[10px] sm:text-[11px] font-bold bg-slate-100 text-slate-500">Scheduled</span></td>
       `;
       tbody.appendChild(tr);
     });
@@ -1902,6 +1938,7 @@ function updateStopsTable(busLat, busLng, currentSpeedKmph) {
 
   const startSpanIdx = Math.min(busAbsoluteIdx, pIdx);
   const journeyStops = currentStopsList.slice(startSpanIdx, dIdx + 1);
+  const rName = window.ROUTES_DATABASE[activeRouteKey]?.name || "Direct";
 
   let accRideDist = 0;
   let rideStepNum = 1;
@@ -1979,11 +2016,11 @@ function updateStopsTable(busLat, busLng, currentSpeedKmph) {
     const tr = document.createElement("tr");
     if (rowClass) tr.className = rowClass;
     tr.innerHTML = `
-      <td class="p-2 sm:p-2.5 pl-3 sm:pl-4">${displayStepNum}</td>
-      <td class="p-2 sm:p-2.5 font-medium">${stop.name}</td>
-      <td class="p-2 sm:p-2.5 text-slate-400 hidden sm:table-cell">${distLabel}</td>
-      <td class="p-2 sm:p-2.5 text-slate-400 text-[11px]">${remLabel}</td>
-      <td class="p-2 sm:p-2.5 pr-3 sm:pr-4 text-right sm:text-left"><span class="px-1.5 sm:px-2 py-0.5 rounded text-[10px] sm:text-[11px] font-bold bg-slate-100 text-slate-500">${etaLabel}</span></td>
+      <td class="py-2 px-1.5 sm:p-2.5 pl-2.5 sm:pl-4 font-bold">${displayStepNum}</td>
+      <td class="py-2 px-1.5 sm:p-2.5 font-semibold text-slate-800">${stop.name} <span class="text-[9px] text-sky-700 font-bold">(${rName})</span></td>
+      <td class="py-2 px-1.5 sm:p-2.5 text-slate-600 font-medium whitespace-nowrap">${distLabel}</td>
+      <td class="py-2 px-1.5 sm:p-2.5 text-slate-600 text-[10px] sm:text-[11px]">${remLabel}</td>
+      <td class="py-2 px-1.5 sm:p-2.5 pr-2.5 sm:pr-4 text-right sm:text-left"><span class="px-1.5 sm:px-2 py-0.5 rounded text-[10px] sm:text-[11px] font-bold bg-slate-100 text-slate-500">${etaLabel}</span></td>
     `;
     tbody.appendChild(tr);
   });
@@ -2017,7 +2054,7 @@ client.on('connect', () => {
   console.log('Connected to HiveMQ Unified Fleet WebSocket Hub');
   if (connBadge) {
     connBadge.className = "px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-sm flex items-center gap-1 text-[11px]";
-    connBadge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span><span>Live</span>`;
+    connBadge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span><span>Online</span>`;
   }
   client.subscribe('citytransit/fleet/#', (err) => {
     if (err) console.error('Subscription error:', err);
