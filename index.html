@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <title>NEXBUS_LIVE - Smart Bus Navigation</title>
   
   <script src="https://cdn.tailwindcss.com"></script>
@@ -133,8 +133,8 @@
     </div>
   </div>
 
-  <!-- Sliding Bottom Sheet Drawer -->
-  <div id="bottomSheet" class="bottom-sheet absolute bottom-0 left-0 right-0 h-[72vh] md:h-[50vh] bg-white border-t-2 border-emerald-500 rounded-t-3xl shadow-2xl z-30 flex flex-col">
+  <!-- Sliding Bottom Sheet Drawer (Optimized with dvh and Safe Area Padding) -->
+  <div id="bottomSheet" class="bottom-sheet absolute bottom-0 left-0 right-0 h-[80dvh] sm:h-[75vh] md:h-[50vh] bg-white border-t-2 border-emerald-500 rounded-t-3xl shadow-2xl z-30 flex flex-col min-h-0">
     <!-- Drag Handle Bar -->
     <div class="p-2 sm:p-2.5 flex flex-col items-center cursor-pointer bg-slate-50 rounded-t-3xl border-b border-slate-200 shrink-0" onclick="toggleBottomSheet()">
       <div class="w-10 h-1 bg-slate-300 rounded-full mb-1"></div>
@@ -154,12 +154,12 @@
     </div>
 
     <!-- Main Container -->
-    <div class="grid grid-cols-1 md:grid-cols-3 flex-1 overflow-hidden bg-white">
-      <!-- Buses List Column -->
-      <div id="busesListContainer" class="p-2.5 sm:p-3 overflow-y-auto border-r border-slate-200 space-y-2 bg-slate-50/50"></div>
+    <div class="grid grid-cols-1 md:grid-cols-3 flex-1 overflow-hidden bg-white min-h-0">
+      <!-- Buses List Column (Includes pb-28 for full mobile visibility) -->
+      <div id="busesListContainer" class="p-2.5 sm:p-3 pb-28 sm:pb-8 overflow-y-auto border-r border-slate-200 space-y-2 bg-slate-50/50 min-h-0 custom-scrollbar"></div>
 
-      <!-- Stop Schedule Column -->
-      <div id="scheduleColumn" class="hidden md:flex md:col-span-2 flex-col overflow-hidden bg-white relative h-full">
+      <!-- Stop Schedule Column (Includes pb-28 for full mobile visibility) -->
+      <div id="scheduleColumn" class="hidden md:flex md:col-span-2 flex-col overflow-hidden bg-white relative h-full min-h-0">
         <div id="scheduleToolbar" class="p-2 px-3 sm:p-2.5 sm:px-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between shrink-0">
           <div class="flex items-center gap-2">
             <span class="text-xs font-bold text-slate-700">Journey Stops</span>
@@ -167,7 +167,7 @@
           </div>
         </div>
 
-        <div id="scheduleContentArea" class="flex-1 overflow-y-auto custom-scrollbar">
+        <div id="scheduleContentArea" class="flex-1 overflow-y-auto pb-28 sm:pb-8 custom-scrollbar min-h-0">
           <!-- Placeholder State -->
           <div id="noTrackPlaceholder" class="h-full flex flex-col items-center justify-center p-6 text-center text-slate-400 min-h-[220px]">
             <div class="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center mb-2.5 text-slate-400 shadow-inner">
@@ -217,6 +217,6 @@
   <script src="route/mini series/s-126(bata mini).js"></script>
 
   <!-- Application Engine -->
-  <script src="app.js?v=5.7"></script>
+  <script src="app.js?v=5.8"></script>
 </body>
 </html>
