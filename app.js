@@ -290,10 +290,11 @@ function calculateTripSummary(pickupStop, destStop, stopsList, effectiveSpeedKmp
   };
 }
 
+// Strict directional live bus checker
 function checkLegLiveAvailability(routeKey, direction, maxStopIdx, stops) {
   if (!stops || stops.length === 0) return false;
   return Object.values(activeBuses).some(b => {
-    const isLine = normalizeStr(b.routeKey || b.route).includes(normalizeStr(routeKey));
+    const isLine = normalizeStr(b.routeKey || b.route).includes(normalizeStr(routeKey)) || normalizeStr(routeKey).includes(normalizeStr(b.routeKey || b.route));
     const isDir = (b.busDir === direction);
     if (!isLine || !isDir) return false;
     const bIdx = findBusNearestStopIndex(b.lat, b.lng, stops);
@@ -310,41 +311,40 @@ function updateBusDirectionFromMovement(busPlate, newLat, newLng, newHeading, ne
   }
 
   const prev = activeBuses[busPlate];
+  if (!routeConfig) return prev ? (prev.busDir || "UP") : "UP";
 
-  if (!prev && routeConfig) {
-    const fStops = routeConfig.forwardStops || [];
-    const rStops = routeConfig.returnStops || [];
-    if (fStops.length > 0 && rStops.length > 0) {
-      const dUp = getDistanceMeters(newLat, newLng, fStops[0].lat, fStops[0].lng);
-      const dDown = getDistanceMeters(newLat, newLng, rStops[0].lat, rStops[0].lng);
-      return dUp < dDown ? "UP" : "DOWN";
-    }
-  }
+  const fStops = routeConfig.forwardStops || [];
+  const rStops = routeConfig.returnStops || [];
 
-  if (newSpeedKmph < 5.0) {
-    if (prev && prev.busDir) {
-      return prev.busDir;
-    }
-  }
-
-  if (newSpeedKmph >= 5.0 && newHeading !== undefined && newHeading >= 0) {
-    if (newHeading >= 20 && newHeading <= 160) return "UP";
-    if (newHeading >= 200 && newHeading <= 340) return "DOWN";
-  }
-
-  if (prev && routeConfig) {
+  // Stop index progression check
+  if (prev && fStops.length > 0) {
     const moved = getDistanceMeters(prev.lat, prev.lng, newLat, newLng);
-    if (moved >= 15.0) {
-      const forwardStops = routeConfig.forwardStops || [];
-      const prevIdx = findBusNearestStopIndex(prev.lat, prev.lng, forwardStops);
-      const currIdx = findBusNearestStopIndex(newLat, newLng, forwardStops);
+    if (moved >= 12.0) {
+      const prevIdx = findBusNearestStopIndex(prev.lat, prev.lng, fStops);
+      const currIdx = findBusNearestStopIndex(newLat, newLng, fStops);
       if (currIdx > prevIdx) return "UP";
       if (currIdx < prevIdx) return "DOWN";
     }
-    return prev.busDir || "UP";
   }
 
-  return prev ? (prev.busDir || "UP") : "UP";
+  // Heading-based direction
+  if (newSpeedKmph >= 4.0 && newHeading !== undefined && newHeading !== null && newHeading >= 0) {
+    if (newHeading >= 15 && newHeading <= 165) return "UP";
+    if (newHeading >= 195 && newHeading <= 345) return "DOWN";
+  }
+
+  // Terminal proximity fallback
+  if (prev && prev.busDir) {
+    return prev.busDir;
+  }
+
+  if (fStops.length > 0 && rStops.length > 0) {
+    const dToUpStart = getDistanceMeters(newLat, newLng, fStops[0].lat, fStops[0].lng);
+    const dToDownStart = getDistanceMeters(newLat, newLng, rStops[0].lat, rStops[0].lng);
+    return dToUpStart < dToDownStart ? "UP" : "DOWN";
+  }
+
+  return "UP";
 }
 
 function scrollTableToActiveRow(force = false) {
@@ -549,12 +549,7 @@ function updateTripStatusBadge() {
   // DIRECT ROUTE
   if (activeRouteKey && currentStopsList.length > 0) {
     const pIdx = selectedPickupStop ? findStopIndexInList(currentStopsList, selectedPickupStop) : -1;
-    const hasLiveDirectBus = Object.values(activeBuses).some(b => {
-      const isLine = normalizeStr(b.routeKey || b.route).includes(normalizeStr(activeRouteKey));
-      if (!isLine || b.busDir !== currentDirection) return false;
-      const bIdx = findBusNearestStopIndex(b.lat, b.lng, currentStopsList);
-      return pIdx === -1 || bIdx <= pIdx;
-    });
+    const hasLiveDirectBus = checkLegLiveAvailability(activeRouteKey, currentDirection, pIdx, currentStopsList);
 
     if (hasLiveDirectBus) {
       connBadge.className = "px-2 py-0.5 sm:py-1 rounded-full font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-sm flex items-center gap-1 text-[11px] whitespace-nowrap shrink-0";
@@ -640,17 +635,7 @@ function openLinesModal() {
     if (!config) return;
 
     const pIdx = findStopIndexInList(r.stops, selectedPickupStop);
-
-    const liveBusesOnThisLine = Object.values(activeBuses).filter(b => {
-      const isLine = normalizeStr(b.routeKey || b.route).includes(normalizeStr(r.routeKey));
-      const isDir = (b.busDir === currentDirection);
-      if (!isLine || !isDir) return false;
-      
-      const busIdx = findBusNearestStopIndex(b.lat, b.lng, r.stops);
-      return (pIdx === -1 || busIdx <= pIdx);
-    });
-
-    const isLive = liveBusesOnThisLine.length > 0;
+    const isLive = checkLegLiveAvailability(r.routeKey, currentDirection, pIdx, r.stops);
 
     const parts = (config.subTitle || "").split(/<->|↔|->|-/).map(s => s.trim()).filter(Boolean);
     const startTerm = parts[0] || "";
@@ -678,7 +663,7 @@ function openLinesModal() {
       <div class="text-right">
         ${isLive 
           ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-700 border border-emerald-200 flex items-center gap-1">
-               <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>${liveBusesOnThisLine.length} Upcoming
+               <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>Live Line
              </span>` 
           : `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200/70 text-slate-500">Scheduled</span>`
         }
@@ -697,7 +682,7 @@ function closeLinesModal() {
 }
 
 // ==========================================
-// 5. UNIFIED NO-BACKTRACK TRANSIT DISCOVERY ENGINE
+// 5. UNIFIED TRANSIT DISCOVERY ENGINE
 // ==========================================
 function findMatchingRoutes(pName, dName) {
   let pNorm = normalizeStr(pName);
@@ -729,10 +714,7 @@ function findMatchingRoutes(pName, dName) {
     }
   }
 
-  // Lock transfer exploration to the direct direction if direct routes exist
-  const directDir = directMatches.length > 0 ? directMatches[0].direction : null;
-
-  // 2. 1-Transfer Discovery (Strict Direction & Anti-Redundancy Engine)
+  // 2. 1-Transfer Discovery (Strict Anti-Redundancy & Directional Progress)
   for (const r1Key of allRouteKeys) {
     const r1 = window.ROUTES_DATABASE[r1Key];
     const directions1 = [
@@ -741,13 +723,10 @@ function findMatchingRoutes(pName, dName) {
     ];
 
     for (const leg1 of directions1) {
-      // If direct route exists, only allow transfers in that same overall corridor direction
-      if (directDir && leg1.dir !== directDir) continue;
-
       let pIdx = leg1.stops.findIndex(s => normalizeStr(s.name).includes(pNorm) || pNorm.includes(normalizeStr(s.name)) || (s.area && normalizeStr(s.area).includes(pNorm)));
       if (pIdx === -1) continue;
 
-      // Skip transfer calculations if Leg 1 directly reaches destination
+      // Skip transfer if this route already directly reaches destination
       let directDIdx = leg1.stops.findIndex(s => normalizeStr(s.name).includes(dNorm) || dNorm.includes(normalizeStr(s.name)) || (s.area && normalizeStr(s.area).includes(dNorm)));
       if (directDIdx !== -1 && directDIdx > pIdx) {
         continue;
@@ -764,9 +743,6 @@ function findMatchingRoutes(pName, dName) {
         ];
 
         for (const leg2 of directions2) {
-          // CRITICAL: Both legs MUST travel in the SAME direction (no U-turn / reverse legs)
-          if (leg1.dir !== leg2.dir) continue;
-
           let d2Idx = leg2.stops.findIndex(s => normalizeStr(s.name).includes(dNorm) || dNorm.includes(normalizeStr(s.name)) || (s.area && normalizeStr(s.area).includes(dNorm)));
           if (d2Idx === -1) continue;
 
@@ -786,11 +762,11 @@ function findMatchingRoutes(pName, dName) {
               const distLeg2 = getDistanceMeters(transferStop.lat, transferStop.lng, dStop.lat, dStop.lng);
               const totalTransferDist = distLeg1 + distLeg2;
 
-              // Feeder-tolerant anti-backtracking check
-              const isNotExtremeBacktrack = distTransferToDest <= Math.max(distPickupToDest * 1.5, distPickupToDest + 2500);
-              const isReasonableTotalDist = totalTransferDist <= Math.max(distPickupToDest * 2.5, 10000);
+              // Transfer hub must not move backwards away from destination
+              const makesProgress = distTransferToDest < distPickupToDest + 350;
+              const isReasonableTotalDist = totalTransferDist <= Math.max(distPickupToDest * 1.6, 7000);
 
-              if (isNotExtremeBacktrack && isReasonableTotalDist) {
+              if (makesProgress && isReasonableTotalDist) {
                 commonStops.push({
                   transferStopName: transferStop.name,
                   tIdx: tIdx,
@@ -807,27 +783,17 @@ function findMatchingRoutes(pName, dName) {
             commonStops.sort((a, b) => a.distTransferToDest - b.distTransferToDest || a.totalDist - b.totalDist);
             const bestTransfer = commonStops[0];
 
-            const liveLeg1Buses = Object.values(activeBuses).filter(b => {
-              const isLine = normalizeStr(b.routeKey || b.route).includes(normalizeStr(r1Key));
-              if (!isLine || b.busDir !== leg1.dir) return false;
-              const bIdx = findBusNearestStopIndex(b.lat, b.lng, leg1.stops);
-              return bIdx <= pIdx;
-            });
-
-            const liveLeg2Buses = Object.values(activeBuses).filter(b => {
-              const isLine = normalizeStr(b.routeKey || b.route).includes(normalizeStr(r2Key));
-              if (!isLine || b.busDir !== leg2.dir) return false;
-              const bIdx = findBusNearestStopIndex(b.lat, b.lng, leg2.stops);
-              return bIdx <= bestTransfer.t2Idx;
-            });
+            // Validate live bus direction strictly
+            const isLeg1Live = checkLegLiveAvailability(r1Key, leg1.dir, pIdx, leg1.stops);
+            const isLeg2Live = checkLegLiveAvailability(r2Key, leg2.dir, bestTransfer.t2Idx, leg2.stops);
 
             rawTransfers.push({
               type: 'TRANSFER',
               transferStopName: bestTransfer.transferStopName,
               totalDist: bestTransfer.totalDist,
               leg1StopsCount: bestTransfer.leg1StopsCount,
-              hasLiveLeg1: liveLeg1Buses.length > 0,
-              hasLiveLeg2: liveLeg2Buses.length > 0,
+              hasLiveLeg1: isLeg1Live,
+              hasLiveLeg2: isLeg2Live,
               leg1: {
                 routeKey: r1Key,
                 direction: leg1.dir,
@@ -897,13 +863,7 @@ function handleSearchClick() {
   }
 
   const hasLiveDirect = hasDirect && lastSearchResult.direct.some(d => {
-    return Object.values(activeBuses).some(b => {
-      const isLine = normalizeStr(b.routeKey || b.route).includes(normalizeStr(d.routeKey));
-      const isDir = (b.busDir === d.direction);
-      if (!isLine || !isDir) return false;
-      const bIdx = findBusNearestStopIndex(b.lat, b.lng, d.stops);
-      return bIdx <= d.pIdx;
-    });
+    return checkLegLiveAvailability(d.routeKey, d.direction, d.pIdx, d.stops);
   });
 
   const hasLiveTransfer = hasTransfers && lastSearchResult.transfers.some(t => t.hasLiveLeg1);
@@ -912,9 +872,10 @@ function handleSearchClick() {
     switchMobileTab('buses');
   }
 
+  // Priority Selection Cascade
   if (hasLiveDirect) {
     selectDirectOption(0, false);
-  } else if (hasLiveTransfer) {
+  } else if (hasLiveTransfer && !hasDirect) {
     selectTransferOption(0, false);
   } else if (hasDirect) {
     selectDirectOption(0, false);
@@ -946,7 +907,7 @@ function selectDirectOption(index = 0, maintainTracking = false) {
   openBottomSheet();
 
   const upcomingBuses = Object.values(activeBuses).filter(b => {
-    const isLine = normalizeStr(b.routeKey || b.route).includes(normalizeStr(activeRouteKey));
+    const isLine = normalizeStr(b.routeKey || b.route).includes(normalizeStr(activeRouteKey)) || normalizeStr(activeRouteKey).includes(normalizeStr(b.routeKey || b.route));
     if (!isLine || b.busDir !== currentDirection) return false;
     const busCurrentIdx = findBusNearestStopIndex(b.lat, b.lng, currentStopsList);
     return busCurrentIdx <= primary.pIdx;
@@ -996,7 +957,7 @@ function selectTransferOption(index = 0, maintainTracking = false) {
   openBottomSheet();
 
   const upcomingLeg1Buses = Object.values(activeBuses).filter(b => {
-    const isLine = normalizeStr(b.routeKey || b.route).includes(normalizeStr(activeTransferPlan.leg1.routeKey));
+    const isLine = normalizeStr(b.routeKey || b.route).includes(normalizeStr(activeTransferPlan.leg1.routeKey)) || normalizeStr(activeTransferPlan.leg1.routeKey).includes(normalizeStr(b.routeKey || b.route));
     if (!isLine || b.busDir !== activeTransferPlan.leg1.direction) return false;
     const bIdx = findBusNearestStopIndex(b.lat, b.lng, activeTransferPlan.leg1.stops);
     return bIdx <= activeTransferPlan.leg1.pIdx;
@@ -1077,7 +1038,7 @@ function startTracking() {
 
   if (currentTripPlanType === "TRANSFER" && activeTransferPlan) {
     const upcomingLeg1Buses = Object.values(activeBuses).filter(b => {
-      const isLine = normalizeStr(b.routeKey || b.route).includes(normalizeStr(activeTransferPlan.leg1.routeKey));
+      const isLine = normalizeStr(b.routeKey || b.route).includes(normalizeStr(activeTransferPlan.leg1.routeKey)) || normalizeStr(activeTransferPlan.leg1.routeKey).includes(normalizeStr(b.routeKey || b.route));
       if (!isLine || b.busDir !== activeTransferPlan.leg1.direction) return false;
       const bIdx = findBusNearestStopIndex(b.lat, b.lng, activeTransferPlan.leg1.stops);
       return bIdx <= activeTransferPlan.leg1.pIdx;
@@ -1400,13 +1361,7 @@ function renderRoutePins(autoFit = false) {
     }
   }
 
-  const hasLiveDirectBus = Object.values(activeBuses).some(b => {
-    const isLine = normalizeStr(b.routeKey || b.route).includes(normalizeStr(activeRouteKey));
-    const isDir = (b.busDir === currentDirection);
-    if (!isLine || !isDir) return false;
-    const bIdx = findBusNearestStopIndex(b.lat, b.lng, currentStopsList);
-    return bIdx <= pIdx;
-  });
+  const hasLiveDirectBus = checkLegLiveAvailability(activeRouteKey, currentDirection, pIdx, currentStopsList);
 
   const rideStops = currentStopsList.slice(pIdx, dIdx + 1);
   const ridePoints = rideStops.map(s => [s.lat, s.lng]);
@@ -1483,19 +1438,14 @@ function updateAvailableBusesList() {
       const totalStops = leg1Count + leg2Count;
 
       const upcomingLeg1Buses = Object.values(activeBuses).filter(b => {
-        const isLine = normalizeStr(b.routeKey || b.route).includes(normalizeStr(plan.leg1.routeKey));
+        const isLine = normalizeStr(b.routeKey || b.route).includes(normalizeStr(plan.leg1.routeKey)) || normalizeStr(plan.leg1.routeKey).includes(normalizeStr(b.routeKey || b.route));
         if (!isLine || b.busDir !== plan.leg1.direction) return false;
         const busCurrentIdx = findBusNearestStopIndex(b.lat, b.lng, plan.leg1.stops);
         return busCurrentIdx <= plan.leg1.pIdx;
       });
 
       const isLeg1Live = upcomingLeg1Buses.length > 0;
-      const isLeg2Live = Object.values(activeBuses).some(b => {
-        const isLine = normalizeStr(b.routeKey || b.route).includes(normalizeStr(plan.leg2.routeKey));
-        if (!isLine || b.busDir !== plan.leg2.direction) return false;
-        const bIdx = findBusNearestStopIndex(b.lat, b.lng, plan.leg2.stops);
-        return bIdx <= plan.leg2.tIdx;
-      });
+      const isLeg2Live = checkLegLiveAvailability(plan.leg2.routeKey, plan.leg2.direction, plan.leg2.tIdx, plan.leg2.stops);
 
       const isAllLive = isLeg1Live && isLeg2Live;
       const isPartialLive = isLeg1Live && !isLeg2Live;
@@ -2202,7 +2152,8 @@ client.on('message', (topic, message) => {
       updateDirectionBannerText();
     }
 
-    const detectedDir = updateBusDirectionFromMovement(busPlate, busLat, busLng, busHeading, busSpeed, "UP", routeConfig);
+    // Accurately resolve UP/DOWN without hardcoding
+    const detectedDir = updateBusDirectionFromMovement(busPlate, busLat, busLng, busHeading, busSpeed, d.dir || null, routeConfig);
 
     activeBuses[busPlate] = {
       plate: busPlate,
