@@ -638,7 +638,7 @@ function closeLinesModal() {
 }
 
 // ==========================================
-// 5. DIRECTION-AWARE TRANSIT ROUTING ENGINE
+// 5. UNIFIED NO-BACKTRACK TRANSIT DISCOVERY ENGINE
 // ==========================================
 function findMatchingRoutes(pName, dName) {
   let pNorm = normalizeStr(pName);
@@ -653,110 +653,104 @@ function findMatchingRoutes(pName, dName) {
   // 1. Direct Routes Discovery
   for (const rKey of allRouteKeys) {
     const rObj = window.ROUTES_DATABASE[rKey];
-    const fStops = rObj.forwardStops || [];
-    const rStops = (rObj.returnStops && rObj.returnStops.length > 0) ? rObj.returnStops : [...fStops].reverse();
-
-    // Check UP / Forward
-    const pFwd = findStopIndexInList(fStops, pName);
-    const dFwd = findStopIndexInList(fStops, dName);
-    if (pFwd !== -1 && dFwd !== -1 && pFwd < dFwd) {
-      directMatches.push({ type: 'DIRECT', routeKey: rKey, direction: "UP", stops: fStops, pIdx: pFwd, dIdx: dFwd });
+    
+    // UP Direction
+    const pUp = rObj.forwardStops.findIndex(s => normalizeStr(s.name).includes(pNorm) || pNorm.includes(normalizeStr(s.name)) || (s.area && normalizeStr(s.area).includes(pNorm)));
+    const dUp = rObj.forwardStops.findIndex(s => normalizeStr(s.name).includes(dNorm) || dNorm.includes(normalizeStr(s.name)) || (s.area && normalizeStr(s.area).includes(dNorm)));
+    if (pUp !== -1 && dUp !== -1 && pUp < dUp) {
+      directMatches.push({ type: 'DIRECT', routeKey: rKey, direction: "UP", stops: rObj.forwardStops, pIdx: pUp, dIdx: dUp });
+      continue;
     }
 
-    // Check DOWN / Return
-    const pRet = findStopIndexInList(rStops, pName);
-    const dRet = findStopIndexInList(rStops, dName);
-    if (pRet !== -1 && dRet !== -1 && pRet < dRet) {
-      directMatches.push({ type: 'DIRECT', routeKey: rKey, direction: "DOWN", stops: rStops, pIdx: pRet, dIdx: dRet });
+    // DOWN Direction
+    const pDown = rObj.returnStops.findIndex(s => normalizeStr(s.name).includes(pNorm) || pNorm.includes(normalizeStr(s.name)) || (s.area && normalizeStr(s.area).includes(pNorm)));
+    const dDown = rObj.returnStops.findIndex(s => normalizeStr(s.name).includes(dNorm) || dNorm.includes(normalizeStr(s.name)) || (s.area && normalizeStr(s.area).includes(dNorm)));
+    if (pDown !== -1 && dDown !== -1 && pDown < dDown) {
+      directMatches.push({ type: 'DIRECT', routeKey: rKey, direction: "DOWN", stops: rObj.returnStops, pIdx: pDown, dIdx: dDown });
     }
   }
 
-  // 2. 1-Transfer Discovery
+  // 2. 1-Transfer Discovery (Strict Anti-Backtracking)
   for (const r1Key of allRouteKeys) {
     const r1 = window.ROUTES_DATABASE[r1Key];
     const directions1 = [
-      { dir: "UP", stops: r1.forwardStops || [] },
-      { dir: "DOWN", stops: (r1.returnStops && r1.returnStops.length > 0) ? r1.returnStops : [...(r1.forwardStops || [])].reverse() }
+      { dir: "UP", stops: r1.forwardStops },
+      { dir: "DOWN", stops: r1.returnStops }
     ];
 
     for (const leg1 of directions1) {
-      let pIdx = findStopIndexInList(leg1.stops, pName);
+      let pIdx = leg1.stops.findIndex(s => normalizeStr(s.name).includes(pNorm) || pNorm.includes(normalizeStr(s.name)) || (s.area && normalizeStr(s.area).includes(pNorm)));
       if (pIdx === -1) continue;
 
       const pStop = leg1.stops[pIdx];
 
       for (const r2Key of allRouteKeys) {
-        if (r2Key === r1Key) continue; // No self transfers
+        if (r2Key === r1Key) continue;
         const r2 = window.ROUTES_DATABASE[r2Key];
         const directions2 = [
-          { dir: "UP", stops: r2.forwardStops || [] },
-          { dir: "DOWN", stops: (r2.returnStops && r2.returnStops.length > 0) ? r2.returnStops : [...(r2.forwardStops || [])].reverse() }
+          { dir: "UP", stops: r2.forwardStops },
+          { dir: "DOWN", stops: r2.returnStops }
         ];
 
         for (const leg2 of directions2) {
-          let d2Idx = findStopIndexInList(leg2.stops, dName);
+          let d2Idx = leg2.stops.findIndex(s => normalizeStr(s.name).includes(dNorm) || dNorm.includes(normalizeStr(s.name)) || (s.area && normalizeStr(s.area).includes(dNorm)));
           if (d2Idx === -1) continue;
 
           const dStop = leg2.stops[d2Idx];
           const commonStops = [];
-          const isSameDirection = (leg1.dir === leg2.dir);
 
-          // Scan all subsequent stops on Leg 1 for an interchange point
           for (let tIdx = pIdx + 1; tIdx < leg1.stops.length; tIdx++) {
             const transferStop = leg1.stops[tIdx];
-            const t2Idx = findStopIndexInList(leg2.stops, transferStop);
+            const tNorm = normalizeStr(transferStop.name);
 
-            // Valid interchange if Transfer occurs BEFORE Destination on Leg 2
+            const t2Idx = leg2.stops.findIndex(s => normalizeStr(s.name).includes(tNorm) || tNorm.includes(normalizeStr(s.name)) || (s.area && normalizeStr(s.area).includes(tNorm)));
+
             if (t2Idx !== -1 && t2Idx < d2Idx) {
               const distPickupToDest = getDistanceMeters(pStop.lat, pStop.lng, dStop.lat, dStop.lng);
+              const distTransferToDest = getDistanceMeters(transferStop.lat, transferStop.lng, dStop.lat, dStop.lng);
               const distLeg1 = getDistanceMeters(pStop.lat, pStop.lng, transferStop.lat, transferStop.lng);
               const distLeg2 = getDistanceMeters(transferStop.lat, transferStop.lng, dStop.lat, dStop.lng);
-              const totalDist = distLeg1 + distLeg2;
+              const totalTransferDist = distLeg1 + distLeg2;
 
-              const maxAllowedDist = Math.max(distPickupToDest * 2.2, 14000);
-              if (totalDist <= maxAllowedDist) {
+              const makesForwardProgress = distTransferToDest < (distPickupToDest - 500);
+              const isReasonableTotalDist = totalTransferDist <= Math.max(distPickupToDest * 1.5, 6000);
+
+              if (makesForwardProgress && isReasonableTotalDist) {
                 commonStops.push({
                   transferStopName: transferStop.name,
                   tIdx: tIdx,
                   t2Idx: t2Idx,
-                  totalDist: totalDist,
-                  distTransferToDest: distLeg2,
-                  leg1StopsCount: tIdx - pIdx
+                  totalDist: totalTransferDist,
+                  leg1StopsCount: tIdx - pIdx,
+                  distTransferToDest: distTransferToDest
                 });
               }
             }
           }
 
           if (commonStops.length > 0) {
-            // DIRECTION-AWARE TRANSFER SELECTION:
-            if (isSameDirection) {
-              // Same-direction (e.g. Eden City -> Howrah): Maximize ride on live Leg 1 before divergence
-              commonStops.sort((a, b) => a.distTransferToDest - b.distTransferToDest || b.tIdx - a.tIdx);
-            } else {
-              // Opposite-directions (e.g. River Side -> Eden City): Transfer at the immediate junction (minimize overshoot)
-              commonStops.sort((a, b) => a.totalDist - b.totalDist || a.tIdx - b.tIdx);
-            }
-
+            commonStops.sort((a, b) => a.distTransferToDest - b.distTransferToDest || a.totalDist - b.totalDist);
             const bestTransfer = commonStops[0];
 
             const liveLeg1Buses = Object.values(activeBuses).filter(b => {
               const isLine = normalizeStr(b.routeKey || b.route).includes(normalizeStr(r1Key));
               if (!isLine || b.busDir !== leg1.dir) return false;
               const bIdx = findBusNearestStopIndex(b.lat, b.lng, leg1.stops);
-              return bIdx <= bestTransfer.tIdx;
+              return bIdx <= pIdx;
             });
 
             const liveLeg2Buses = Object.values(activeBuses).filter(b => {
               const isLine = normalizeStr(b.routeKey || b.route).includes(normalizeStr(r2Key));
               if (!isLine || b.busDir !== leg2.dir) return false;
               const bIdx = findBusNearestStopIndex(b.lat, b.lng, leg2.stops);
-              return bIdx <= d2Idx;
+              return bIdx <= bestTransfer.t2Idx;
             });
 
             rawTransfers.push({
               type: 'TRANSFER',
               transferStopName: bestTransfer.transferStopName,
               totalDist: bestTransfer.totalDist,
+              leg1StopsCount: bestTransfer.leg1StopsCount,
               hasLiveLeg1: liveLeg1Buses.length > 0,
               hasLiveLeg2: liveLeg2Buses.length > 0,
               leg1: {
@@ -800,7 +794,8 @@ function findMatchingRoutes(pName, dName) {
     return liveScoreB - liveScoreA || a.totalDist - b.totalDist;
   });
 
-  return { direct: directMatches, transfers: candidateTransfers.slice(0, 2) };
+  const topTransfers = candidateTransfers.slice(0, 2);
+  return { direct: directMatches, transfers: topTransfers };
 }
 
 function handleSearchClick() {
@@ -811,10 +806,6 @@ function handleSearchClick() {
     alert("Please select both Pickup and Destination stops!");
     return;
   }
-
-  const allStops = getAllUniqueStops();
-  selectedPickupStop = allStops.find(s => normalizeStr(s.name) === normalizeStr(pickVal)) || { name: pickVal };
-  selectedDestStop = allStops.find(s => normalizeStr(s.name) === normalizeStr(destVal)) || { name: destVal };
 
   shouldResetScrollOnNextRender = true;
 
@@ -1129,12 +1120,14 @@ function renderSchedulePreview() {
     return;
   }
 
+  // DIRECT ROUTE SCHEDULE (Identical presentation & step progress)
   const pIdx = selectedPickupStop ? findStopIndexInList(currentStopsList, selectedPickupStop) : 0;
   const dIdx = selectedDestStop ? findStopIndexInList(currentStopsList, selectedDestStop) : currentStopsList.length - 1;
 
   const validP = (pIdx !== -1) ? pIdx : 0;
   const validD = (dIdx !== -1 && dIdx >= validP) ? dIdx : currentStopsList.length - 1;
   const journeyStops = currentStopsList.slice(validP, validD + 1);
+  const rName = window.ROUTES_DATABASE[activeRouteKey]?.name || "Direct";
 
   journeyStops.forEach((stop, idx) => {
     const isBoarding = (idx === 0);
@@ -1154,11 +1147,11 @@ function renderSchedulePreview() {
     const tr = document.createElement("tr");
     if (rowClass) tr.className = rowClass;
     tr.innerHTML = `
-      <td class="p-2 sm:p-2.5 pl-3 sm:pl-4">${idx + 1}</td>
-      <td class="p-2 sm:p-2.5 font-medium">${stop.name}</td>
-      <td class="p-2 sm:p-2.5 text-slate-400 hidden sm:table-cell">--</td>
-      <td class="p-2 sm:p-2.5 text-slate-400 text-[11px]">--</td>
-      <td class="p-2 sm:p-2.5 pr-3 sm:pr-4 text-right sm:text-left"><span class="px-1.5 sm:px-2 py-0.5 rounded text-[10px] sm:text-[11px] font-bold bg-slate-100 text-slate-500">Scheduled</span></td>
+      <td class="py-2 px-1.5 sm:p-2.5 pl-2.5 sm:pl-4 font-bold">${idx + 1}</td>
+      <td class="py-2 px-1.5 sm:p-2.5 font-semibold text-slate-800">${stop.name} <span class="text-[9px] text-sky-700 font-bold">(${rName})</span></td>
+      <td class="py-2 px-1.5 sm:p-2.5 text-slate-400 whitespace-nowrap">--</td>
+      <td class="py-2 px-1.5 sm:p-2.5 text-slate-500 text-[10px] sm:text-[11px]">${progressLabel}</td>
+      <td class="py-2 px-1.5 sm:p-2.5 pr-2.5 sm:pr-4 text-right sm:text-left"><span class="px-1.5 sm:px-2 py-0.5 rounded text-[10px] sm:text-[11px] font-bold bg-slate-100 text-slate-500">Scheduled</span></td>
     `;
     tbody.appendChild(tr);
   });
