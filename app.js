@@ -729,7 +729,10 @@ function findMatchingRoutes(pName, dName) {
     }
   }
 
-  // 2. 1-Transfer Discovery (Anti-Redundancy & Feeder-Tolerant Engine)
+  // Lock transfer exploration to the direct direction if direct routes exist
+  const directDir = directMatches.length > 0 ? directMatches[0].direction : null;
+
+  // 2. 1-Transfer Discovery (Strict Direction & Anti-Redundancy Engine)
   for (const r1Key of allRouteKeys) {
     const r1 = window.ROUTES_DATABASE[r1Key];
     const directions1 = [
@@ -738,6 +741,9 @@ function findMatchingRoutes(pName, dName) {
     ];
 
     for (const leg1 of directions1) {
+      // If direct route exists, only allow transfers in that same overall corridor direction
+      if (directDir && leg1.dir !== directDir) continue;
+
       let pIdx = leg1.stops.findIndex(s => normalizeStr(s.name).includes(pNorm) || pNorm.includes(normalizeStr(s.name)) || (s.area && normalizeStr(s.area).includes(pNorm)));
       if (pIdx === -1) continue;
 
@@ -758,6 +764,9 @@ function findMatchingRoutes(pName, dName) {
         ];
 
         for (const leg2 of directions2) {
+          // CRITICAL: Both legs MUST travel in the SAME direction (no U-turn / reverse legs)
+          if (leg1.dir !== leg2.dir) continue;
+
           let d2Idx = leg2.stops.findIndex(s => normalizeStr(s.name).includes(dNorm) || dNorm.includes(normalizeStr(s.name)) || (s.area && normalizeStr(s.area).includes(dNorm)));
           if (d2Idx === -1) continue;
 
