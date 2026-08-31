@@ -1127,7 +1127,7 @@ function findMatchingRoutes(pName, dName) {
           const distPickupToDest = getDistanceMeters(pStop.lat, pStop.lng, dStop.lat, dStop.lng);
           const commonStops = [];
 
-          // Calculate cumulative segment distances on Leg 1 starting from Pickup
+          // Cumulative segment distances on Leg 1 starting from Pickup
           let accDistLeg1 = 0;
           const leg1DistMap = {};
           for (let i = pIdx; i < leg1.stops.length; i++) {
@@ -2291,7 +2291,7 @@ function updateStopsTable(busLat, busLng, currentSpeedKmph) {
       let statusClass = isFinal ? "text-rose-600 font-extrabold" : "text-slate-400";
       if (isFinal) badge = { text: `Destination • ${r2Name}`, cls: "text-rose-700" };
 
-      rowsHtml.push(tlRow({ name: stop.name, badge, subLabel: `${segKm} km`, timeLabel: "--:--", statusText, statusClass, dotState, dim: false, active: false }));
+      rowsHtml.push(tlRow({ name: stop.name, badge, subLabel, timeLabel, statusText, statusClass, dotState, dim: false, active: false }));
       prevLat = stop.lat; prevLng = stop.lng;
     });
 
