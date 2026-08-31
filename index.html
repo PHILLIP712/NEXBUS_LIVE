@@ -46,9 +46,9 @@
       <div>
         <label class="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1 leading-none">From</label>
         <div class="relative w-full mt-0.5">
-          <div class="flex items-center bg-slate-50 hover:bg-slate-100/80 focus-within:bg-white rounded-xl border border-slate-200 focus-within:border-[#7C3AED] focus-within:ring-2 focus-within:ring-[#7C3AED]/15 transition-all">
+          <div class="flex items-center bg-slate-50 hover:bg-slate-100/80 focus-within:bg-white rounded-xl border border-slate-200 focus-within:border-[#00ABE4] focus-within:ring-2 focus-within:ring-[#00ABE4]/15 transition-all">
             <div class="pl-3 pr-1.5 py-1.5 sm:py-2 flex items-center shrink-0">
-              <span class="w-2.5 h-2.5 rounded-full bg-[#7C3AED] ring-4 ring-[#7C3AED]/15"></span>
+              <span class="w-2.5 h-2.5 rounded-full bg-[#00ABE4] ring-4 ring-[#00ABE4]/15"></span>
             </div>
             <input
               id="pickup-input"
@@ -60,7 +60,7 @@
             <button id="pickup-clear" onclick="clearInput('pickup')" class="hidden pr-1 text-slate-400 hover:text-slate-600">
               <i data-lucide="x" class="w-3.5 h-3.5"></i>
             </button>
-            <button id="useCurrentLocationBtn" onclick="useCurrentLocationAsPickup()" title="Use current location" class="mr-1 my-1 shrink-0 w-7 h-7 rounded-lg bg-[#7C3AED]/10 hover:bg-[#7C3AED]/20 text-[#7C3AED] flex items-center justify-center transition-colors active:scale-95">
+            <button id="useCurrentLocationBtn" onclick="useCurrentLocationAsPickup()" title="Use current location" class="mr-1 my-1 shrink-0 w-7 h-7 rounded-lg bg-[#00ABE4]/10 hover:bg-[#00ABE4]/20 text-[#00ABE4] flex items-center justify-center transition-colors active:scale-95">
               <i data-lucide="locate-fixed" class="w-3.5 h-3.5"></i>
             </button>
           </div>
@@ -72,8 +72,8 @@
       <div class="mt-1.5">
         <label class="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1 leading-none">To</label>
         <div class="relative w-full mt-0.5">
-          <div class="flex items-center bg-slate-50 hover:bg-slate-100/80 focus-within:bg-white rounded-xl border border-slate-200 focus-within:border-[#7C3AED] focus-within:ring-2 focus-within:ring-[#7C3AED]/15 transition-all">
-            <div class="pl-3 pr-1.5 py-1.5 sm:py-2 flex items-center text-[#7C3AED] shrink-0">
+          <div class="flex items-center bg-slate-50 hover:bg-slate-100/80 focus-within:bg-white rounded-xl border border-slate-200 focus-within:border-[#00ABE4] focus-within:ring-2 focus-within:ring-[#00ABE4]/15 transition-all">
+            <div class="pl-3 pr-1.5 py-1.5 sm:py-2 flex items-center text-[#00ABE4] shrink-0">
               <i data-lucide="map-pin" class="w-4 h-4"></i>
             </div>
             <input
@@ -91,7 +91,7 @@
               type="button"
               onclick="swapPickupAndDestination()"
               title="Swap Stops"
-              class="mr-1 my-1 shrink-0 w-7 h-7 rounded-lg bg-slate-100 hover:bg-[#7C3AED]/10 text-slate-500 hover:text-[#7C3AED] flex items-center justify-center transition-colors active:scale-95 group"
+              class="mr-1 my-1 shrink-0 w-7 h-7 rounded-lg bg-slate-100 hover:bg-[#00ABE4]/10 text-slate-500 hover:text-[#00ABE4] flex items-center justify-center transition-colors active:scale-95 group"
             >
               <i data-lucide="arrow-up-down" id="swapIcon" class="w-3.5 h-3.5 transition-transform duration-300"></i>
             </button>
@@ -101,23 +101,23 @@
       </div>
 
       <!-- Find Buses Button -->
-      <button onclick="handleSearchClick()" class="mt-2 w-full bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-bold text-xs sm:text-sm py-2 sm:py-2.5 rounded-xl shadow-lg shadow-[#7C3AED]/30 transition-colors flex items-center justify-center gap-2 active:scale-[0.98]">
+      <button onclick="handleSearchClick()" class="mt-2 w-full bg-[#00ABE4] hover:bg-[#0091C2] text-white font-bold text-xs sm:text-sm py-2 sm:py-2.5 rounded-xl shadow-lg shadow-[#00ABE4]/30 transition-colors flex items-center justify-center gap-2 active:scale-[0.98]">
         <i data-lucide="search" class="w-4 h-4"></i>
         <span>Find Buses</span>
       </button>
 
       <!-- Quick Access Chips -->
       <div class="mt-1.5 grid grid-cols-3 gap-1.5 sm:gap-2">
-        <button id="chipHome" onclick="useQuickLocation('home')" onmousedown="startChipHold('home')" onmouseup="cancelChipHold()" onmouseleave="cancelChipHold()" ontouchstart="startChipHold('home')" ontouchend="cancelChipHold()" class="flex items-center justify-center gap-1.5 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-[#7C3AED]/5 hover:border-[#7C3AED]/30 text-slate-700 text-[11px] sm:text-xs font-bold transition-colors active:scale-[0.97]">
+        <button id="chipHome" onclick="useQuickLocation('home')" onmousedown="startChipHold('home')" onmouseup="cancelChipHold()" onmouseleave="cancelChipHold()" ontouchstart="startChipHold('home')" ontouchend="cancelChipHold()" class="flex items-center justify-center gap-1.5 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-[#00ABE4]/5 hover:border-[#00ABE4]/30 text-slate-700 text-[11px] sm:text-xs font-bold transition-colors active:scale-[0.97]">
           <i data-lucide="home" class="w-3.5 h-3.5 text-slate-400"></i>
           <span>Home</span>
         </button>
-        <button id="chipWork" onclick="useQuickLocation('work')" onmousedown="startChipHold('work')" onmouseup="cancelChipHold()" onmouseleave="cancelChipHold()" ontouchstart="startChipHold('work')" ontouchend="cancelChipHold()" class="flex items-center justify-center gap-1.5 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-[#7C3AED]/5 hover:border-[#7C3AED]/30 text-slate-700 text-[11px] sm:text-xs font-bold transition-colors active:scale-[0.97]">
+        <button id="chipWork" onclick="useQuickLocation('work')" onmousedown="startChipHold('work')" onmouseup="cancelChipHold()" onmouseleave="cancelChipHold()" ontouchstart="startChipHold('work')" ontouchend="cancelChipHold()" class="flex items-center justify-center gap-1.5 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-[#00ABE4]/5 hover:border-[#00ABE4]/30 text-slate-700 text-[11px] sm:text-xs font-bold transition-colors active:scale-[0.97]">
           <i data-lucide="briefcase" class="w-3.5 h-3.5 text-slate-400"></i>
           <span>Work</span>
         </button>
         <div class="relative">
-          <button id="chipFavorites" onclick="toggleFavoritesDropdown()" class="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-[#7C3AED]/5 hover:border-[#7C3AED]/30 text-slate-700 text-[11px] sm:text-xs font-bold transition-colors active:scale-[0.97]">
+          <button id="chipFavorites" onclick="toggleFavoritesDropdown()" class="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-[#00ABE4]/5 hover:border-[#00ABE4]/30 text-slate-700 text-[11px] sm:text-xs font-bold transition-colors active:scale-[0.97]">
             <i data-lucide="star" class="w-3.5 h-3.5 text-slate-400"></i>
             <span>Favorites</span>
           </button>
@@ -128,18 +128,17 @@
     </div>
   </header>
 
-
   <!-- Live Bus Status Floating Card -->
   <div id="floatingBusCard" class="hidden absolute bottom-5 left-1/2 -translate-x-1/2 z-10 w-full max-w-md px-3 sm:px-4 pointer-events-none transition-all duration-300">
     <div class="pointer-events-auto bg-white/95 backdrop-blur-md rounded-2xl shadow-xl border border-slate-200 p-3 sm:p-4 flex items-center justify-between">
       <div class="flex items-center gap-2.5 sm:gap-3 cursor-pointer min-w-0" onclick="openBottomSheet()">
-        <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-violet-500 text-white flex items-center justify-center shadow-md shadow-violet-500/20 shrink-0">
+        <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-[#00ABE4] text-white flex items-center justify-center shadow-md shadow-[#00ABE4]/20 shrink-0">
           <i data-lucide="bus" class="w-4 h-4 sm:w-5 sm:h-5"></i>
         </div>
         <div class="min-w-0">
           <div class="flex items-center gap-1.5">
             <h4 id="floatBusPlate" class="font-bold text-slate-900 text-xs sm:text-sm truncate">--</h4>
-            <span id="floatLivePill" class="px-1.5 py-0.2 rounded-full text-[10px] font-semibold bg-violet-100 text-violet-700 border border-violet-200 shrink-0">Live</span>
+            <span id="floatLivePill" class="px-1.5 py-0.2 rounded-full text-[10px] font-semibold bg-[#00ABE4]/10 text-[#0091C2] border border-[#00ABE4]/30 shrink-0">Live</span>
           </div>
           <p id="floatTelemetry" class="text-[11px] text-slate-500 font-medium mt-0.5 truncate">Speed: 0.0 km/h</p>
         </div>
@@ -156,18 +155,18 @@
     </div>
   </div>
 
-  <!-- Sliding Bottom Sheet Drawer (Optimized with dvh and Safe Area Padding) -->
-  <div id="bottomSheet" class="bottom-sheet absolute bottom-0 left-0 right-0 h-[46dvh] sm:h-[50vh] md:h-[46vh] bg-white border-t-2 border-violet-500 rounded-t-3xl shadow-2xl z-30 flex flex-col min-h-0">
-    <!-- Drag Handle Bar (drag down to close, no tap-to-close) -->
+  <!-- Sliding Bottom Sheet Drawer -->
+  <div id="bottomSheet" class="bottom-sheet absolute bottom-0 left-0 right-0 h-[46dvh] sm:h-[50vh] md:h-[46vh] bg-white border-t-2 border-[#00ABE4] rounded-t-3xl shadow-2xl z-30 flex flex-col min-h-0">
+    <!-- Drag Handle Bar -->
     <div id="sheetDragHandle" class="sheet-drag-handle p-2 sm:p-2.5 flex flex-col items-center bg-slate-50 rounded-t-3xl border-b border-slate-200 shrink-0">
       <div class="w-10 h-1 bg-slate-300 rounded-full mb-1"></div>
       <div id="sheetTitleText" class="text-[11px] sm:text-xs font-bold text-slate-700 uppercase tracking-wider">Available Buses & Route Schedule</div>
     </div>
 
-    <!-- Mobile View Switcher Tabs (Phones Only) -->
+    <!-- Mobile View Switcher Tabs -->
     <div class="flex md:hidden border-b border-slate-200 bg-slate-100/80 p-1 gap-1 shrink-0">
       <button id="tabBusesBtn" onclick="switchMobileTab('buses')" class="flex-1 py-1.5 text-xs font-bold rounded-xl bg-white text-slate-900 shadow-sm transition-all flex items-center justify-center gap-1.5">
-        <i data-lucide="bus" class="w-3.5 h-3.5 text-violet-600"></i>
+        <i data-lucide="bus" class="w-3.5 h-3.5 text-[#00ABE4]"></i>
         <span>Available Buses</span>
       </button>
       <button id="tabScheduleBtn" onclick="switchMobileTab('schedule')" class="flex-1 py-1.5 text-xs font-bold rounded-xl text-slate-500 hover:text-slate-800 transition-all flex items-center justify-center gap-1.5">
@@ -176,12 +175,12 @@
       </button>
     </div>
 
-    <!-- Main Container -->
+    <!-- Main Drawer Columns -->
     <div class="grid grid-cols-1 md:grid-cols-3 flex-1 overflow-hidden bg-white min-h-0">
-      <!-- Buses List Column (Includes pb-28 for full mobile visibility) -->
+      <!-- Buses List Column -->
       <div id="busesListContainer" class="p-2.5 sm:p-3 pb-28 sm:pb-8 overflow-y-auto border-r border-slate-200 space-y-2 bg-slate-50/50 min-h-0 custom-scrollbar"></div>
 
-      <!-- Stop Schedule Column (Includes pb-28 for full mobile visibility) -->
+      <!-- Stop Schedule Column -->
       <div id="scheduleColumn" class="hidden md:flex md:col-span-2 flex-col overflow-hidden bg-white relative h-full min-h-0">
         <div id="scheduleToolbar" class="p-2 px-3 sm:p-2.5 sm:px-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between shrink-0">
           <div class="flex items-center gap-2">
@@ -197,7 +196,7 @@
               <i data-lucide="navigation" class="w-5 h-5 sm:w-6 sm:h-6"></i>
             </div>
             <h4 class="font-bold text-xs sm:text-sm text-slate-700">Ready to Navigate</h4>
-            <p class="text-[11px] sm:text-xs text-slate-400 max-w-xs mt-1">Tap <span class="font-bold text-violet-600">Track this bus</span> or <span class="font-bold text-violet-600">Track this bus & route</span> to start live tracking & view stop timings.</p>
+            <p class="text-[11px] sm:text-xs text-slate-400 max-w-xs mt-1">Tap <span class="font-bold text-[#00ABE4]">Track this bus</span> or <span class="font-bold text-violet-600">Track this bus & route</span> to start live tracking & view stop timings.</p>
           </div>
 
           <!-- Stoppages Timeline -->
@@ -229,6 +228,6 @@
   <script src="route/mini series/s-126(bata mini).js"></script>
 
   <!-- Application Engine -->
-  <script src="app.js?v=5.8"></script>
+  <script src="app.js?v=6.0"></script>
 </body>
 </html>

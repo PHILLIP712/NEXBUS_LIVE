@@ -143,11 +143,11 @@ function createDynamicBusMapIcon(routeString, busPlate, heading = 0, destTermina
           <div class="bus-pulse"></div>
           
           <div class="absolute inset-0 flex items-center justify-center pointer-events-none transition-transform duration-500 ease-linear" style="${rotationStyle}">
-            <div class="w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-b-[10px] border-b-violet-400 absolute -top-1.5 drop-shadow-md"></div>
+            <div class="w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-b-[10px] border-b-[#00ABE4] absolute -top-1.5 drop-shadow-md"></div>
           </div>
 
           <div class="relative z-10 w-8 h-8 bg-slate-900 text-white rounded-full border-2 border-white shadow-xl flex items-center justify-center">
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-violet-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6v6"/><path d="M15 6v6"/><path d="M2 12h19.6"/><path d="M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.4-.1-.8-.2-1.2l-1.4-5C20.1 6.8 19.1 6 18 6H4a2 2 0 0 0-2 2v10h3"/><circle cx="7" cy="18" r="2"/><circle cx="15" cy="18" r="2"/></svg>
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-[#00ABE4]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6v6"/><path d="M15 6v6"/><path d="M2 12h19.6"/><path d="M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.4-.1-.8-.2-1.2l-1.4-5C20.1 6.8 19.1 6 18 6H4a2 2 0 0 0-2 2v10h3"/><circle cx="7" cy="18" r="2"/><circle cx="15" cy="18" r="2"/></svg>
           </div>
         </div>
 
@@ -167,17 +167,17 @@ function createPinIcon(type) {
   let border = "1px solid #fff";
 
   if (type === "pickup") {
-    color = "#7C3AED";
+    color = "#00ABE4";
     size = 18;
-    border = "3px solid #fff; box-shadow: 0 0 12px #7C3AED;";
+    border = "3px solid #fff; box-shadow: 0 0 12px #00ABE4;";
   } else if (type === "bus_loc") {
     color = "#f59e0b";
     size = 16;
     border = "3px solid #fff; box-shadow: 0 0 10px #f59e0b;";
   } else if (type === "transfer") {
-    color = "#8b5cf6";
+    color = "#f59e0b";
     size = 16;
-    border = "3px solid #fff; box-shadow: 0 0 12px #8b5cf6;";
+    border = "3px solid #fff; box-shadow: 0 0 12px #f59e0b;";
   } else if (type === "dest") {
     color = "#ef4444";
     size = 18;
@@ -334,7 +334,7 @@ function calculateTripSummary(pickupStop, destStop, stopsList, effectiveSpeedKmp
   };
 }
 
-// Strict directional check: checks line match, directional orientation, and that bus has not passed the boarding stop
+// Strict directional check: checks line match, direction equality, and that bus has not passed the boarding stop
 function checkLegLiveAvailability(routeKey, direction, maxStopIdx, stops) {
   if (!stops || stops.length === 0) return false;
   return Object.values(activeBuses).some(b => {
@@ -436,8 +436,8 @@ function setupStopAutocomplete(inputId, dropdownId, type) {
 
     matches.forEach(stop => {
       const li = document.createElement('li');
-      li.className = 'px-3.5 py-2.5 hover:bg-[#7C3AED]/5 cursor-pointer flex items-center gap-3 transition-colors';
-      const iconColor = type === 'pickup' ? 'text-[#7C3AED] bg-[#7C3AED]/10' : 'text-[#7C3AED]/70 bg-[#7C3AED]/10';
+      li.className = 'px-3.5 py-2.5 hover:bg-[#00ABE4]/5 cursor-pointer flex items-center gap-3 transition-colors';
+      const iconColor = type === 'pickup' ? 'text-[#00ABE4] bg-[#00ABE4]/10' : 'text-[#00ABE4]/70 bg-[#00ABE4]/10';
       const isFav = savedPlaces.favorites.some(f => normalizeStr(f.name) === normalizeStr(stop.name));
 
       li.innerHTML = `
@@ -448,7 +448,7 @@ function setupStopAutocomplete(inputId, dropdownId, type) {
           <div class="text-xs sm:text-sm font-semibold text-slate-800 truncate">${stop.name}</div>
           <div class="text-[10px] sm:text-xs text-slate-400 truncate">${stop.area || 'Bus Stop'}</div>
         </div>
-        <button class="stop-fav-btn shrink-0 w-7 h-7 rounded-full hover:bg-rose-100 flex items-center justify-center transition-colors ${isFav ? 'is-fav text-rose-500' : 'text-slate-300'}" onclick='event.stopPropagation(); toggleFavoriteStopByName(${JSON.stringify(stop.name)}, this);' title="${isFav ? 'Remove from Favorites' : 'Add to Favorites'}">
+        <button class="stop-fav-btn shrink-0 w-7 h-7 rounded-full hover:bg-[#00ABE4]/10 flex items-center justify-center transition-colors ${isFav ? 'is-fav text-[#00ABE4]' : 'text-slate-300'}" onclick='event.stopPropagation(); toggleFavoriteStopByName(${JSON.stringify(stop.name)}, this);' title="${isFav ? 'Remove from Favorites' : 'Add to Favorites'}">
           <i data-lucide="star" class="w-3.5 h-3.5"></i>
         </button>
       `;
@@ -584,8 +584,8 @@ function persistSavedPlaces() {
 }
 
 function refreshQuickChipsUI() {
-  const activeClass = "flex items-center justify-center gap-1.5 py-2 rounded-xl border border-[#7C3AED]/40 bg-[#7C3AED]/10 text-[#6D28D9] text-[11px] sm:text-xs font-bold transition-colors active:scale-[0.97]";
-  const inactiveClass = "flex items-center justify-center gap-1.5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-[#7C3AED]/5 hover:border-[#7C3AED]/30 text-slate-700 text-[11px] sm:text-xs font-bold transition-colors active:scale-[0.97]";
+  const activeClass = "flex items-center justify-center gap-1.5 py-2 rounded-xl border border-[#00ABE4]/40 bg-[#00ABE4]/10 text-[#0091C2] text-[11px] sm:text-xs font-bold transition-colors active:scale-[0.97]";
+  const inactiveClass = "flex items-center justify-center gap-1.5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-[#00ABE4]/5 hover:border-[#00ABE4]/30 text-slate-700 text-[11px] sm:text-xs font-bold transition-colors active:scale-[0.97]";
 
   const homeBtn = document.getElementById('chipHome');
   const workBtn = document.getElementById('chipWork');
@@ -685,12 +685,12 @@ function renderFavoritesDropdown() {
   }
 
   dropdown.innerHTML = savedPlaces.favorites.map((f, idx) => `
-    <li class="px-3 py-2.5 hover:bg-rose-50 cursor-pointer flex items-center gap-2.5 transition-colors" onclick="selectFavorite(${idx})">
-      <div class="w-6 h-6 rounded-lg bg-rose-50 text-rose-500 flex items-center justify-center shrink-0">
+    <li class="px-3 py-2.5 hover:bg-[#00ABE4]/5 cursor-pointer flex items-center gap-2.5 transition-colors" onclick="selectFavorite(${idx})">
+      <div class="w-6 h-6 rounded-lg bg-[#00ABE4]/10 text-[#00ABE4] flex items-center justify-center shrink-0">
         <i data-lucide="star" class="w-3 h-3"></i>
       </div>
       <span class="flex-1 min-w-0 text-xs font-semibold text-slate-800 truncate">${f.name}</span>
-      <button onclick="event.stopPropagation(); removeFavorite(${idx});" class="w-6 h-6 rounded-full hover:bg-rose-100 text-slate-300 hover:text-rose-600 flex items-center justify-center shrink-0">
+      <button onclick="event.stopPropagation(); removeFavorite(${idx});" class="w-6 h-6 rounded-full hover:bg-[#00ABE4]/10 text-slate-300 hover:text-[#00ABE4] flex items-center justify-center shrink-0">
         <i data-lucide="x" class="w-3.5 h-3.5"></i>
       </button>
     </li>
@@ -732,7 +732,7 @@ function toggleFavoriteStop(stop, btnEl) {
 
   if (btnEl) {
     btnEl.classList.toggle('is-fav', isFavNow);
-    btnEl.classList.toggle('text-rose-500', isFavNow);
+    btnEl.classList.toggle('text-[#00ABE4]', isFavNow);
     btnEl.classList.toggle('text-slate-300', !isFavNow);
     btnEl.title = isFavNow ? 'Remove from Favorites' : 'Add to Favorites';
   }
@@ -890,8 +890,8 @@ function updateTripStatusBadge() {
     );
 
     if (hasLiveLeg1 && hasLiveLeg2) {
-      connBadge.className = "px-2 py-0.5 sm:py-1 rounded-full font-bold bg-violet-50 text-violet-700 border border-violet-200 shadow-sm flex items-center gap-1 text-[11px] whitespace-nowrap shrink-0";
-      connBadge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-violet-500 animate-pulse"></span><span>Connected</span>`;
+      connBadge.className = "px-2 py-0.5 sm:py-1 rounded-full font-bold bg-[#00ABE4]/10 text-[#00ABE4] border border-[#00ABE4]/30 shadow-sm flex items-center gap-1 text-[11px] whitespace-nowrap shrink-0";
+      connBadge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-[#00ABE4] animate-pulse"></span><span>Connected</span>`;
     } else if (hasLiveLeg1 || hasLiveLeg2) {
       connBadge.className = "px-2 py-0.5 sm:py-1 rounded-full font-bold bg-amber-50 text-amber-700 border border-amber-200 shadow-sm flex items-center gap-1 text-[11px] whitespace-nowrap shrink-0";
       connBadge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span><span>Partial Connected</span>`;
@@ -908,8 +908,8 @@ function updateTripStatusBadge() {
     const hasLiveDirectBus = checkLegLiveAvailability(activeRouteKey, currentDirection, pIdx, currentStopsList);
 
     if (hasLiveDirectBus) {
-      connBadge.className = "px-2 py-0.5 sm:py-1 rounded-full font-bold bg-violet-50 text-violet-700 border border-violet-200 shadow-sm flex items-center gap-1 text-[11px] whitespace-nowrap shrink-0";
-      connBadge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-violet-500 animate-pulse"></span><span>Connected</span>`;
+      connBadge.className = "px-2 py-0.5 sm:py-1 rounded-full font-bold bg-[#00ABE4]/10 text-[#00ABE4] border border-[#00ABE4]/30 shadow-sm flex items-center gap-1 text-[11px] whitespace-nowrap shrink-0";
+      connBadge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-[#00ABE4] animate-pulse"></span><span>Connected</span>`;
     } else {
       connBadge.className = "px-2 py-0.5 sm:py-1 rounded-full font-bold bg-slate-100 text-slate-600 border border-slate-200 shadow-sm flex items-center gap-1 text-[11px] whitespace-nowrap shrink-0";
       connBadge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span><span>Scheduled</span>`;
@@ -954,7 +954,7 @@ function updateDirectionBannerText() {
         </button>
         <div class="flex items-center gap-1 text-xs font-bold text-slate-800">
           <span>${selectedPickupStop.name}</span>
-          <span class="text-violet-600 font-bold">➔</span>
+          <span class="text-[#00ABE4] font-bold">➔</span>
           <span>${selectedDestStop.name}</span>
         </div>
       </div>
@@ -972,7 +972,7 @@ function updateDirectionBannerText() {
     <div class="flex items-center gap-1.5 flex-wrap">
       <span class="text-slate-900 font-bold">${routeConfig.name}:</span> 
       <span class="text-slate-800 font-semibold">${selectedPickupStop.name}</span> 
-      <span class="text-violet-600 font-bold">➔</span> 
+      <span class="text-[#00ABE4] font-bold">➔</span> 
       <span class="text-slate-800 font-semibold">${selectedDestStop.name}</span>
     </div>
   `;
@@ -1005,10 +1005,10 @@ function openLinesModal() {
       : (config.forwardStops || []).length;
 
     const card = document.createElement("div");
-    card.className = "p-2.5 sm:p-3 rounded-2xl border border-slate-200/80 bg-slate-50/60 flex items-center justify-between gap-2 hover:border-violet-500 transition-all";
+    card.className = "p-2.5 sm:p-3 rounded-2xl border border-slate-200/80 bg-slate-50/60 flex items-center justify-between gap-2 hover:border-[#00ABE4] transition-all";
     card.innerHTML = `
       <div class="flex items-center gap-2.5 sm:gap-3 min-w-0">
-        <div class="px-2 py-1 rounded-xl bg-violet-100/80 text-violet-800 font-extrabold text-xs shrink-0 border border-violet-200/60 min-w-[50px] text-center">
+        <div class="px-2 py-1 rounded-xl bg-[#00ABE4]/10 text-[#0091C2] font-extrabold text-xs shrink-0 border border-[#00ABE4]/30 min-w-[50px] text-center">
           ${config.name}
         </div>
         <div class="min-w-0">
@@ -1018,8 +1018,8 @@ function openLinesModal() {
       </div>
       <div class="text-right shrink-0">
         ${isLive 
-          ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-violet-100 text-violet-700 border border-violet-200 inline-flex items-center gap-1 whitespace-nowrap">
-               <span class="w-1.5 h-1.5 rounded-full bg-violet-500 animate-pulse shrink-0"></span>Live Line
+          ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-[#00ABE4]/10 text-[#00ABE4] border border-[#00ABE4]/30 inline-flex items-center gap-1 whitespace-nowrap">
+               <span class="w-1.5 h-1.5 rounded-full bg-[#00ABE4] animate-pulse shrink-0"></span>Live Line
              </span>` 
           : `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200/70 text-slate-500 whitespace-nowrap">Scheduled</span>`
         }
@@ -1038,7 +1038,7 @@ function closeLinesModal() {
 }
 
 // ==========================================
-// 5. UNIFIED NO-BACKTRACK TRANSIT DISCOVERY ENGINE
+// 5. UNIFIED TRANSIT DISCOVERY ENGINE
 // ==========================================
 function findMatchingRoutes(pName, dName) {
   let pNorm = normalizeStr(pName);
@@ -1053,101 +1053,148 @@ function findMatchingRoutes(pName, dName) {
   // 1. Direct Routes Discovery (Checks both UP and DOWN tracks)
   for (const rKey of allRouteKeys) {
     const rObj = window.ROUTES_DATABASE[rKey];
+    if (!rObj) continue;
     
     // Forward / UP Track
-    const pUp = rObj.forwardStops.findIndex(s => normalizeStr(s.name).includes(pNorm) || pNorm.includes(normalizeStr(s.name)) || (s.area && normalizeStr(s.area).includes(pNorm)));
-    const dUp = rObj.forwardStops.findIndex(s => normalizeStr(s.name).includes(dNorm) || dNorm.includes(normalizeStr(s.name)) || (s.area && normalizeStr(s.area).includes(dNorm)));
+    const fStops = rObj.forwardStops || [];
+    const pUp = fStops.findIndex(s => {
+      const n = normalizeStr(s.name);
+      return n.includes(pNorm) || pNorm.includes(n) || (s.area && normalizeStr(s.area).includes(pNorm));
+    });
+    const dUp = fStops.findIndex(s => {
+      const n = normalizeStr(s.name);
+      return n.includes(dNorm) || dNorm.includes(n) || (s.area && normalizeStr(s.area).includes(dNorm));
+    });
     if (pUp !== -1 && dUp !== -1 && pUp < dUp) {
-      directMatches.push({ type: 'DIRECT', routeKey: rKey, direction: "UP", stops: rObj.forwardStops, pIdx: pUp, dIdx: dUp });
-      continue;
+      directMatches.push({ type: 'DIRECT', routeKey: rKey, direction: "UP", stops: fStops, pIdx: pUp, dIdx: dUp });
     }
 
     // Return / DOWN Track
-    const pDown = rObj.returnStops.findIndex(s => normalizeStr(s.name).includes(pNorm) || pNorm.includes(normalizeStr(s.name)) || (s.area && normalizeStr(s.area).includes(pNorm)));
-    const dDown = rObj.returnStops.findIndex(s => normalizeStr(s.name).includes(dNorm) || dNorm.includes(normalizeStr(s.name)) || (s.area && normalizeStr(s.area).includes(dNorm)));
+    const rStops = rObj.returnStops || [];
+    const pDown = rStops.findIndex(s => {
+      const n = normalizeStr(s.name);
+      return n.includes(pNorm) || pNorm.includes(n) || (s.area && normalizeStr(s.area).includes(pNorm));
+    });
+    const dDown = rStops.findIndex(s => {
+      const n = normalizeStr(s.name);
+      return n.includes(dNorm) || dNorm.includes(n) || (s.area && normalizeStr(s.area).includes(dNorm));
+    });
     if (pDown !== -1 && dDown !== -1 && pDown < dDown) {
-      directMatches.push({ type: 'DIRECT', routeKey: rKey, direction: "DOWN", stops: rObj.returnStops, pIdx: pDown, dIdx: dDown });
+      directMatches.push({ type: 'DIRECT', routeKey: rKey, direction: "DOWN", stops: rStops, pIdx: pDown, dIdx: dDown });
     }
   }
 
-  // 2. 1-Transfer Discovery (Anti-Redundancy & Directional Progress)
+  // If ANY direct route exists, NEVER suggest a transfer route
+  if (directMatches.length > 0) {
+    return { direct: directMatches, transfers: [] };
+  }
+
+  // 2. 1-Transfer Discovery (Only runs when NO direct route connects origin and destination)
   for (const r1Key of allRouteKeys) {
     const r1 = window.ROUTES_DATABASE[r1Key];
+    if (!r1) continue;
     const directions1 = [
-      { dir: "UP", stops: r1.forwardStops },
-      { dir: "DOWN", stops: r1.returnStops }
+      { dir: "UP", stops: r1.forwardStops || [] },
+      { dir: "DOWN", stops: r1.returnStops || [] }
     ];
 
     for (const leg1 of directions1) {
-      let pIdx = leg1.stops.findIndex(s => normalizeStr(s.name).includes(pNorm) || pNorm.includes(normalizeStr(s.name)) || (s.area && normalizeStr(s.area).includes(pNorm)));
+      let pIdx = leg1.stops.findIndex(s => {
+        const n = normalizeStr(s.name);
+        return n.includes(pNorm) || pNorm.includes(n) || (s.area && normalizeStr(s.area).includes(pNorm));
+      });
       if (pIdx === -1) continue;
-
-      // Skip transfer if this route already directly reaches destination downstream
-      let directDIdx = leg1.stops.findIndex(s => normalizeStr(s.name).includes(dNorm) || dNorm.includes(normalizeStr(s.name)) || (s.area && normalizeStr(s.area).includes(dNorm)));
-      if (directDIdx !== -1 && directDIdx > pIdx) {
-        continue;
-      }
 
       const pStop = leg1.stops[pIdx];
 
       for (const r2Key of allRouteKeys) {
         if (r2Key === r1Key) continue;
         const r2 = window.ROUTES_DATABASE[r2Key];
+        if (!r2) continue;
         const directions2 = [
-          { dir: "UP", stops: r2.forwardStops },
-          { dir: "DOWN", stops: r2.returnStops }
+          { dir: "UP", stops: r2.forwardStops || [] },
+          { dir: "DOWN", stops: r2.returnStops || [] }
         ];
 
         for (const leg2 of directions2) {
-          let d2Idx = leg2.stops.findIndex(s => normalizeStr(s.name).includes(dNorm) || dNorm.includes(normalizeStr(s.name)) || (s.area && normalizeStr(s.area).includes(dNorm)));
+          let d2Idx = leg2.stops.findIndex(s => {
+            const n = normalizeStr(s.name);
+            return n.includes(dNorm) || dNorm.includes(n) || (s.area && normalizeStr(s.area).includes(dNorm));
+          });
           if (d2Idx === -1) continue;
-
-          // Skip transfer if Route 2 already directly passes the pickup stop before dest
-          let directP2Idx = leg2.stops.findIndex(s => normalizeStr(s.name).includes(pNorm) || pNorm.includes(normalizeStr(s.name)) || (s.area && normalizeStr(s.area).includes(pNorm)));
-          if (directP2Idx !== -1 && directP2Idx < d2Idx) {
-            continue;
-          }
 
           const dStop = leg2.stops[d2Idx];
           const distPickupToDest = getDistanceMeters(pStop.lat, pStop.lng, dStop.lat, dStop.lng);
           const commonStops = [];
 
+          // Calculate cumulative segment distances on Leg 1 starting from Pickup
+          let accDistLeg1 = 0;
+          const leg1DistMap = {};
+          for (let i = pIdx; i < leg1.stops.length; i++) {
+            if (i > pIdx) {
+              accDistLeg1 += getDistanceMeters(leg1.stops[i - 1].lat, leg1.stops[i - 1].lng, leg1.stops[i].lat, leg1.stops[i].lng) * 1.18;
+            }
+            leg1DistMap[i] = accDistLeg1;
+          }
+
           for (let tIdx = pIdx + 1; tIdx < leg1.stops.length; tIdx++) {
             const transferStop = leg1.stops[tIdx];
             const tNorm = normalizeStr(transferStop.name);
 
-            const t2Idx = leg2.stops.findIndex(s => normalizeStr(s.name).includes(tNorm) || tNorm.includes(normalizeStr(s.name)) || (s.area && normalizeStr(s.area).includes(tNorm)));
+            const t2Idx = leg2.stops.findIndex(s => {
+              const n = normalizeStr(s.name);
+              return n.includes(tNorm) || tNorm.includes(n) || (s.area && normalizeStr(s.area).includes(tNorm));
+            });
 
             if (t2Idx !== -1 && t2Idx < d2Idx) {
-              const distTransferToDest = getDistanceMeters(transferStop.lat, transferStop.lng, dStop.lat, dStop.lng);
-              const distLeg1 = getDistanceMeters(pStop.lat, pStop.lng, transferStop.lat, transferStop.lng);
-              const distLeg2 = getDistanceMeters(transferStop.lat, transferStop.lng, dStop.lat, dStop.lng);
-              const totalTransferDist = distLeg1 + distLeg2;
+              // Calculate actual ground route distance for Leg 2 (from transfer stop to destination)
+              let routeDistLeg2 = 0;
+              for (let j = t2Idx + 1; j <= d2Idx; j++) {
+                routeDistLeg2 += getDistanceMeters(leg2.stops[j - 1].lat, leg2.stops[j - 1].lng, leg2.stops[j].lat, leg2.stops[j].lng) * 1.18;
+              }
 
-              // Sensible progress & realistic corridor detour threshold
-              const isSensibleDetour = totalTransferDist <= Math.max(distPickupToDest * 2.5, 14000) && 
-                                       distTransferToDest <= Math.max(distPickupToDest * 1.8, distPickupToDest + 4000);
+              const routeDistLeg1 = leg1DistMap[tIdx];
+              const totalActualRouteDist = routeDistLeg1 + routeDistLeg2;
+              const distTransferToDest = getDistanceMeters(transferStop.lat, transferStop.lng, dStop.lat, dStop.lng);
+
+              // Reasonable forward movement along corridor
+              const isSensibleDetour = totalActualRouteDist <= Math.max(distPickupToDest * 2.2, 14000);
 
               if (isSensibleDetour) {
                 commonStops.push({
                   transferStopName: transferStop.name,
                   tIdx: tIdx,
                   t2Idx: t2Idx,
-                  totalDist: totalTransferDist,
+                  totalDist: totalActualRouteDist,
+                  leg1Dist: routeDistLeg1,
+                  leg2Dist: routeDistLeg2,
                   leg1StopsCount: tIdx - pIdx,
-                  distTransferToDest: distTransferToDest
+                  leg2StopsCount: d2Idx - t2Idx,
+                  distTransferToDest: distTransferToDest,
+                  isSameDirection: (leg1.dir === leg2.dir)
                 });
               }
             }
           }
 
           if (commonStops.length > 0) {
-            commonStops.sort((a, b) => a.distTransferToDest - b.distTransferToDest || a.totalDist - b.totalDist);
-            const bestTransfer = commonStops[0];
-
-            // Validate live bus direction strictly for both legs
             const isLeg1Live = checkLegLiveAvailability(r1Key, leg1.dir, pIdx, leg1.stops);
-            const isLeg2Live = checkLegLiveAvailability(r2Key, leg2.dir, bestTransfer.t2Idx, leg2.stops);
+            const isLeg2Live = checkLegLiveAvailability(r2Key, leg2.dir, commonStops[0].t2Idx, leg2.stops);
+
+            // Optimal transfer selection:
+            // 1. In opposite directions: strictly minimize total ground travel distance (e.g. transfer at Bata More, not Memanpur).
+            // 2. In same direction (parallel corridor): stay on Leg 1 if live until divergence hub, else switch early.
+            commonStops.sort((a, b) => {
+              if (!a.isSameDirection) {
+                return a.totalDist - b.totalDist || a.leg1StopsCount - b.leg1StopsCount;
+              }
+              if (isLeg1Live && !isLeg2Live) {
+                return b.leg1StopsCount - a.leg1StopsCount || a.totalDist - b.totalDist;
+              }
+              return a.totalDist - b.totalDist || a.leg1StopsCount - b.leg1StopsCount;
+            });
+
+            const bestTransfer = commonStops[0];
 
             rawTransfers.push({
               type: 'TRANSFER',
@@ -1197,9 +1244,7 @@ function findMatchingRoutes(pName, dName) {
     return liveScoreB - liveScoreA || a.totalDist - b.totalDist;
   });
 
-  // If a direct route exists, do NOT suggest redundant transfer routes
-  const topTransfers = directMatches.length > 0 ? [] : candidateTransfers.slice(0, 2);
-  return { direct: directMatches, transfers: topTransfers };
+  return { direct: [], transfers: candidateTransfers.slice(0, 2) };
 }
 
 function handleSearchClick() {
@@ -1216,8 +1261,8 @@ function handleSearchClick() {
   busNearestStopIdx = 0;
   selectedBusPlate = null;
 
-  const hasDirect = lastSearchResult.direct.length > 0;
-  const hasTransfers = lastSearchResult.transfers.length > 0;
+  const hasDirect = lastSearchResult.direct && lastSearchResult.direct.length > 0;
+  const hasTransfers = lastSearchResult.transfers && lastSearchResult.transfers.length > 0;
 
   if (!hasDirect && !hasTransfers) {
     alert("No direct or connecting route found between these locations in this direction.");
@@ -1228,7 +1273,7 @@ function handleSearchClick() {
     switchMobileTab('buses');
   }
 
-  // Priority Selection: ALWAYS choose direct routes first
+  // Direct routes ALWAYS take precedence over any transfer
   if (hasDirect) {
     selectDirectOption(0, false);
   } else {
@@ -1479,8 +1524,8 @@ function renderSchedulePreview() {
 
       if (isBoarding) {
         dotState = "boarding"; active = true;
-        badge = { text: `Boarding • ${r1Name}`, cls: "text-violet-700" };
-        statusText = "Now"; statusClass = "text-violet-600 font-extrabold";
+        badge = { text: `Boarding • ${r1Name}`, cls: "text-[#0091C2]" };
+        statusText = "Now"; statusClass = "text-[#00ABE4] font-extrabold";
       } else if (isTransferPoint) {
         dotState = "transfer";
         badge = { text: `Transfer • ${r1Name}`, cls: "text-amber-700" };
@@ -1532,8 +1577,8 @@ function renderSchedulePreview() {
     let dotState = "normal", statusText = "Scheduled", statusClass = "text-slate-400", active = false, badge = { text: rName, cls: "text-sky-700" };
 
     if (isBoarding) {
-      dotState = "boarding"; active = true; badge = { text: `Boarding • ${rName}`, cls: "text-violet-700" };
-      statusText = "Now"; statusClass = "text-violet-600 font-extrabold";
+      dotState = "boarding"; active = true; badge = { text: `Boarding • ${rName}`, cls: "text-[#0091C2]" };
+      statusText = "Now"; statusClass = "text-[#00ABE4] font-extrabold";
     } else if (isFinal) {
       dotState = "destination"; badge = { text: `Destination • ${rName}`, cls: "text-rose-700" };
       statusText = "0 left"; statusClass = "text-rose-600 font-extrabold";
@@ -1785,7 +1830,7 @@ function updateAvailableBusesList() {
           document.getElementById('floatBusPlate').innerHTML = `
             <div class="flex items-center gap-1.5 flex-nowrap">
               <span class="font-bold text-slate-900">${liveBus.plate}</span>
-              <span class="text-[10px] font-extrabold text-violet-800 bg-violet-100/90 px-1.5 py-0.2 rounded border border-violet-200 whitespace-nowrap flex items-center gap-1">
+              <span class="text-[10px] font-extrabold text-[#0091C2] bg-[#00ABE4]/10 px-1.5 py-0.2 rounded border border-[#00ABE4]/30 whitespace-nowrap flex items-center gap-1">
                 <span>➔</span>
                 <span>1-Transfer</span>
               </span>
@@ -1809,8 +1854,8 @@ function updateAvailableBusesList() {
       let badgeHtml = '';
       if (isAllLive) {
         badgeHtml = `
-          <span class="inline-flex items-center gap-1.5 text-[11px] font-bold text-violet-600">
-            <span class="w-2 h-2 rounded-full bg-violet-500 animate-pulse"></span>
+          <span class="inline-flex items-center gap-1.5 text-[11px] font-bold text-[#00ABE4]">
+            <span class="w-2 h-2 rounded-full bg-[#00ABE4] animate-pulse"></span>
             Live
           </span>`;
       } else if (isPartialLive) {
@@ -1828,7 +1873,7 @@ function updateAvailableBusesList() {
       }
 
       const card = document.createElement("div");
-      card.className = `bg-white border ${isSelectedPlan ? (isLeg1Live ? 'border-violet-500 ring-2 ring-violet-500/10' : 'border-slate-400 ring-2 ring-slate-400/10') : 'border-slate-200'} hover:border-violet-500 rounded-2xl p-2.5 sm:p-3 shadow-sm transition-all duration-200 hover:shadow-md cursor-pointer mb-2 sm:mb-2.5`;
+      card.className = `bg-white border ${isSelectedPlan ? (isAllLive ? 'border-[#00ABE4] ring-2 ring-[#00ABE4]/10' : (isLeg1Live ? 'border-violet-500 ring-2 ring-violet-500/10' : 'border-slate-400 ring-2 ring-slate-400/10')) : 'border-slate-200'} hover:border-[#00ABE4] rounded-2xl p-2.5 sm:p-3 shadow-sm transition-all duration-200 hover:shadow-md cursor-pointer mb-2 sm:mb-2.5`;
       card.onclick = () => {
         selectTransferOption(planIdx, isCurrentlyTracked);
       };
@@ -1837,7 +1882,7 @@ function updateAvailableBusesList() {
         <div class="flex items-center justify-between pb-1.5 sm:pb-2 border-b border-slate-100">
           <div>
             ${planIdx === 0 && isLeg1Live ? `
-              <span class="inline-flex items-center gap-1 bg-violet-600 text-white text-[9px] sm:text-[10px] font-extrabold px-2 py-0.5 rounded-md shadow-sm">
+              <span class="inline-flex items-center gap-1 ${isAllLive ? 'bg-[#00ABE4]' : 'bg-violet-600'} text-white text-[9px] sm:text-[10px] font-extrabold px-2 py-0.5 rounded-md shadow-sm">
                 ★ Best Transfer
               </span>
             ` : `
@@ -1849,13 +1894,13 @@ function updateAvailableBusesList() {
 
         <div class="mt-2 sm:mt-2.5">
           <div class="flex items-baseline justify-between gap-2">
-            <div class="text-base sm:text-lg font-black ${isLeg1Live ? 'text-violet-700' : 'text-slate-700'} tracking-tight flex items-center gap-1.5 flex-wrap">
+            <div class="text-base sm:text-lg font-black ${isAllLive ? 'text-[#00ABE4]' : (isLeg1Live ? 'text-violet-700' : 'text-slate-700')} tracking-tight flex items-center gap-1.5 flex-wrap">
               <span>${r1Name}</span>
               <span class="text-xs text-slate-400 font-normal">➔</span>
               <span>${r2Name}</span>
             </div>
             <div class="text-right shrink-0">
-              <div class="text-sm sm:text-base font-black ${isLeg1Live ? 'text-violet-600' : 'text-slate-600'} leading-tight">${etaStr}</div>
+              <div class="text-sm sm:text-base font-black ${isAllLive ? 'text-[#00ABE4]' : (isLeg1Live ? 'text-violet-600' : 'text-slate-600')} leading-tight">${etaStr}</div>
               <div class="text-[9px] sm:text-[10px] text-slate-400">${isLeg1Live ? 'to pickup' : 'Timetable'}</div>
             </div>
           </div>
@@ -1889,7 +1934,7 @@ function updateAvailableBusesList() {
               <span>Cancel Tracking</span>
             </button>
           ` : `
-            <button onclick="event.stopPropagation(); selectTransferOption(${planIdx}, false); startTracking();" class="w-full ${isLeg1Live ? 'bg-violet-600 hover:bg-violet-700 shadow-violet-600/20' : 'bg-slate-800 hover:bg-slate-900'} active:scale-[0.98] text-white font-bold text-xs py-2 px-3.5 rounded-xl shadow-md flex items-center justify-center gap-1.5 transition-all">
+            <button onclick="event.stopPropagation(); selectTransferOption(${planIdx}, false); startTracking();" class="w-full ${isAllLive ? 'bg-[#00ABE4] hover:bg-[#0091C2] shadow-[#00ABE4]/20' : (isLeg1Live ? 'bg-violet-600 hover:bg-violet-700 shadow-violet-600/20' : 'bg-slate-800 hover:bg-slate-900')} active:scale-[0.98] text-white font-bold text-xs py-2 px-3.5 rounded-xl shadow-md flex items-center justify-center gap-1.5 transition-all">
               <i data-lucide="${isLeg1Live ? 'bus' : 'git-merge'}" class="w-3.5 h-3.5"></i>
               <span>${isLeg1Live ? 'Track this bus & route' : 'Track Scheduled Route'}</span>
             </button>
@@ -1971,7 +2016,7 @@ function updateAvailableBusesList() {
         const isCurrentlyTracked = isTrackingConfirmed && isSelected;
 
         const card = document.createElement("div");
-        card.className = `bg-white border ${isSelected ? 'border-violet-500 ring-2 ring-violet-500/10' : 'border-slate-200'} hover:border-violet-500 rounded-2xl p-2.5 sm:p-3 shadow-sm transition-all duration-200 hover:shadow-md cursor-pointer mb-2 sm:mb-2.5`;
+        card.className = `bg-white border ${isSelected ? 'border-[#00ABE4] ring-2 ring-[#00ABE4]/10' : 'border-slate-200'} hover:border-[#00ABE4] rounded-2xl p-2.5 sm:p-3 shadow-sm transition-all duration-200 hover:shadow-md cursor-pointer mb-2 sm:mb-2.5`;
         card.onclick = () => {
           selectBus(item.plate);
         };
@@ -1980,15 +2025,15 @@ function updateAvailableBusesList() {
           <div class="flex items-center justify-between pb-1.5 sm:pb-2 border-b border-slate-100">
             <div>
               ${isBest ? `
-                <span class="inline-flex items-center gap-1 bg-violet-600 text-white text-[9px] sm:text-[10px] font-extrabold px-2 py-0.5 rounded-md shadow-sm">
+                <span class="inline-flex items-center gap-1 bg-[#00ABE4] text-white text-[9px] sm:text-[10px] font-extrabold px-2 py-0.5 rounded-md shadow-sm">
                   ★ Best Option
                 </span>
               ` : `
                 <span class="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider">Alternate</span>
               `}
             </div>
-            <span class="inline-flex items-center gap-1.5 text-[11px] font-bold text-violet-600">
-              <span class="w-2 h-2 rounded-full bg-violet-500 animate-pulse"></span>
+            <span class="inline-flex items-center gap-1.5 text-[11px] font-bold text-[#00ABE4]">
+              <span class="w-2 h-2 rounded-full bg-[#00ABE4] animate-pulse"></span>
               Live
             </span>
           </div>
@@ -1996,7 +2041,7 @@ function updateAvailableBusesList() {
           <div class="flex items-center justify-between mt-2.5 gap-2">
             <div class="flex-1 min-w-0">
               <div class="flex items-center gap-2">
-                <span class="text-xl sm:text-2xl font-black text-violet-600 tracking-tight shrink-0">${item.bus.route}</span>
+                <span class="text-xl sm:text-2xl font-black text-[#00ABE4] tracking-tight shrink-0">${item.bus.route}</span>
                 <span class="text-xs font-bold text-slate-800 truncate">
                   ${selectedPickupStop ? selectedPickupStop.name : 'Origin'} 
                   <span class="text-slate-400 font-normal">➔</span> 
@@ -2009,7 +2054,7 @@ function updateAvailableBusesList() {
             </div>
 
             <div class="text-right shrink-0">
-              <div class="text-base sm:text-lg font-black text-violet-600 leading-tight">${item.etaLabel}</div>
+              <div class="text-base sm:text-lg font-black text-[#00ABE4] leading-tight">${item.etaLabel}</div>
               <div class="text-[9px] sm:text-[10px] text-slate-400 whitespace-nowrap">${item.stopsAway === 0 ? 'Approaching' : `${item.stopsAway} stops away`}</div>
             </div>
           </div>
@@ -2031,7 +2076,7 @@ function updateAvailableBusesList() {
                 <span>Cancel Tracking</span>
               </button>
             ` : `
-              <button onclick="event.stopPropagation(); selectBus('${item.plate}'); startTracking();" class="w-full bg-violet-600 hover:bg-violet-700 active:scale-[0.98] text-white font-bold text-xs py-2 px-3.5 rounded-xl shadow-md shadow-violet-600/20 flex items-center justify-center gap-1.5 transition-all">
+              <button onclick="event.stopPropagation(); selectBus('${item.plate}'); startTracking();" class="w-full bg-[#00ABE4] hover:bg-[#0091C2] active:scale-[0.98] text-white font-bold text-xs py-2 px-3.5 rounded-xl shadow-md shadow-[#00ABE4]/20 flex items-center justify-center gap-1.5 transition-all">
                 <i data-lucide="bus" class="w-3.5 h-3.5"></i>
                 <span>Track this bus</span>
               </button>
@@ -2206,8 +2251,8 @@ function updateStopsTable(busLat, busLng, currentSpeedKmph) {
 
       if (actualStopIdx === pIdx) {
         dotState = "boarding";
-        badge = { text: `Boarding • ${r1Name}`, cls: "text-violet-700" };
-        statusText = "Now"; statusClass = "text-violet-600 font-extrabold";
+        badge = { text: `Boarding • ${r1Name}`, cls: "text-[#0091C2]" };
+        statusText = "Now"; statusClass = "text-[#00ABE4] font-extrabold";
         active = (busAbsoluteIdx <= pIdx);
         if (busAbsoluteIdx > pIdx) { dim = true; statusText = "Boarded"; }
       } else if (isTransferPoint) {
@@ -2291,8 +2336,8 @@ function updateStopsTable(busLat, busLng, currentSpeedKmph) {
 
     if (actualStopIdx === pIdx) {
       dotState = "boarding";
-      badge = { text: `Boarding • ${rName}`, cls: "text-violet-700" };
-      statusText = "Now"; statusClass = "text-violet-600 font-extrabold";
+      badge = { text: `Boarding • ${rName}`, cls: "text-[#0091C2]" };
+      statusText = "Now"; statusClass = "text-[#00ABE4] font-extrabold";
       active = (busAbsoluteIdx <= pIdx);
       if (busAbsoluteIdx > pIdx) { dim = true; statusText = "Boarded"; }
     } else if (actualStopIdx === dIdx) {

@@ -87,7 +87,7 @@ body {
   justify-content: center;
   transform: translate(-50%, -50%);
   pointer-events: auto;
-  transition: transform 0.4s ease-out; /* Smooth heading and marker updates */
+  transition: transform 0.4s ease-out;
 }
 
 /* Route Badge Pill (Top) */
@@ -126,7 +126,7 @@ body {
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: rgba(124, 58, 237, 0.45);
+  background: rgba(0, 171, 228, 0.45);
   animation: pulse-ring 2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
   pointer-events: none;
 }
@@ -191,9 +191,9 @@ body {
 }
 
 .tl-dot.boarding {
-  background: #7C3AED;
-  border-color: #7C3AED;
-  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.18);
+  background: #00ABE4;
+  border-color: #00ABE4;
+  box-shadow: 0 0 0 3px rgba(0, 171, 228, 0.18);
 }
 
 .tl-dot.destination {
