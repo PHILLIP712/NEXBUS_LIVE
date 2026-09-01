@@ -22,7 +22,7 @@ body {
 }
 
 /* ==========================================================================
-   Sliding Bottom Sheet Drawer
+   Interactive Sliding Bottom Sheet Drawer
    ========================================================================== */
 .bottom-sheet {
   transform: translateY(100%);
@@ -77,7 +77,7 @@ body {
 }
 
 /* ==========================================================================
-   Bus Marker & Fluid 3s Movement Interpolation
+   Bus Marker & Fluid 3s Continuous Movement
    ========================================================================== */
 .bus-marker-wrapper {
   position: relative;
@@ -87,11 +87,12 @@ body {
   justify-content: center;
   transform: translate(-50%, -50%);
   pointer-events: auto;
-  /* Matches 3-second hardware reporting interval with continuous linear glide */
+  /* Matches 3-second hardware reporting interval for fluid gliding */
   transition: transform 3s linear !important;
   will-change: transform;
 }
 
+/* Route Badge Pill (Top) */
 .bus-tag-top {
   background-color: #0284c7;
   color: #ffffff;
@@ -106,6 +107,7 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.8);
 }
 
+/* Plate / Bus Number Pill (Bottom) */
 .bus-tag-bottom {
   background-color: #0f172a;
   color: #f8fafc;
@@ -120,6 +122,7 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
+/* Live Radar Pulse Ring */
 .bus-pulse {
   position: absolute;
   width: 32px;
@@ -190,9 +193,9 @@ body {
 }
 
 .tl-dot.boarding {
-  background: #00ABE4;
-  border-color: #00ABE4;
-  box-shadow: 0 0 0 3px rgba(0, 171, 228, 0.18);
+  background: #10B981;
+  border-color: #10B981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.18);
 }
 
 .tl-dot.destination {
@@ -209,9 +212,9 @@ body {
 }
 
 .tl-dot.transfer {
-  background: #f59e0b;
-  border-color: #f59e0b;
-  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.18);
+  background: #00ABE4;
+  border-color: #00ABE4;
+  box-shadow: 0 0 0 3px rgba(0, 171, 228, 0.18);
 }
 
 .tl-dot.passed {
@@ -257,16 +260,16 @@ body {
 .tl-transfer-divider {
   margin: 4px 0 4px 28px;
   padding: 6px 10px;
-  background: #fffbeb;
-  border: 1px dashed #f59e0b;
+  background: #e7f8fd;
+  border: 1px dashed #00ABE4;
   border-radius: 10px;
   font-size: 11px;
   font-weight: 800;
-  color: #92400e;
+  color: #0091C2;
 }
 
 /* ==========================================================================
-   Leaflet UI Overrides
+   Leaflet UI Overrides & Touch Cleanups
    ========================================================================== */
 .leaflet-container {
   font-family: inherit;
@@ -283,6 +286,8 @@ body {
   box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
 }
 
-button, input, li {
+button,
+input,
+li {
   -webkit-tap-highlight-color: transparent;
 }
