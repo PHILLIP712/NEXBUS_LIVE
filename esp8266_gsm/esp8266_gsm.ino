@@ -17,10 +17,13 @@ const char* MQTT_BROKER       = "broker.hivemq.com";
 const int   MQTT_PORT         = 1883;
 const char* MQTT_TOPIC        = "citytransit/fleet/77a_nobata/wb42u2676/data";
 
-// Adaptive Transmission Intervals
+// Leave blank ("") so the web app's 4-tier engine handles direction automatically
+const char* TRIP_DIRECTION    = ""; 
+
+// Adaptive Transmission Intervals (Throttled when stationary to save 2G buffer)
 const unsigned long MOVING_INTERVAL_MS     = 3000;  // 3s while moving
-const unsigned long STATIONARY_INTERVAL_MS = 8000;  // 8s when stopped (prevents 2G packet drop)
-const unsigned long RECONNECT_INTERVAL_MS  = 5000;  // 5s between broker retries
+const unsigned long STATIONARY_INTERVAL_MS = 8000;  // 8s when stationary
+const unsigned long RECONNECT_INTERVAL_MS  = 5000;  // 5s between broker retry attempts
 // ============================================================
 
 // SoftwareSerial for SIM800L (RX=D2/GPIO4, TX=D1/GPIO5)
@@ -45,12 +48,11 @@ void setup() {
   pinMode(GSM_RESET_PIN, OUTPUT);
   digitalWrite(GSM_RESET_PIN, HIGH);
 
-  // Initialize both UART ports
   gsmSerial.begin(9600);
   gpsSerial.begin(9600);
-  gpsSerial.listen(); // Ensure GPS is actively listening
+  gpsSerial.listen();
 
-  Serial.println(F("\n--- Starting Scalable Fleet Tracker (Optimized) ---"));
+  Serial.println(F("\n--- Starting Scalable Fleet Tracker (Stable & Automated) ---"));
 
   // Hardware Reset SIM800L on startup
   digitalWrite(GSM_RESET_PIN, LOW);
@@ -62,20 +64,20 @@ void setup() {
   modem.init();
 
   mqttClient.setServer(MQTT_BROKER, MQTT_PORT);
-  mqttClient.setBufferSize(256);   // Compact fixed buffer
-  mqttClient.setKeepAlive(60);     // 60-second window to prevent disconnects on slow 2G
-  mqttClient.setSocketTimeout(6);  // Non-blocking 6s timeout
+  mqttClient.setBufferSize(256);
+  mqttClient.setKeepAlive(30);     // 30s keepalive ping to maintain open socket over 2G
+  mqttClient.setSocketTimeout(10); // 10s timeout allowance for slow carrier handoffs
 }
 
 void loop() {
-  // 1. Continuous GPS sentence decoding (listen to GPS port)
+  // 1. Continuous background GPS decoding
   gpsSerial.listen();
   while (gpsSerial.available() > 0) {
     gps.encode(gpsSerial.read());
     yield();
   }
 
-  // 2. Network & MQTT session management (listen to GSM port)
+  // 2. Network & MQTT session management
   gsmSerial.listen();
   if (!mqttClient.connected()) {
     unsigned long now = millis();
@@ -84,10 +86,10 @@ void loop() {
       maintainConnection();
     }
   } else {
-    mqttClient.loop();
+    mqttClient.loop(); // Keeps keep-alive ping/pong active
   }
 
-  // 3. Periodic Adaptive Broadcast
+  // 3. Periodic Adaptive Telemetry Broadcast
   float spd = gps.speed.isValid() ? gps.speed.kmph() : 0.0;
   unsigned long activeInterval = (spd >= 3.0) ? MOVING_INTERVAL_MS : STATIONARY_INTERVAL_MS;
 
@@ -102,47 +104,29 @@ void loop() {
 }
 
 void maintainConnection() {
-  if (!modem.isNetworkConnected()) {
-    Serial.print(F("Searching Cellular Network..."));
-    if (!modem.waitForNetwork(3000L)) { // Short 3-second non-blocking check
-      Serial.println(F(" FAIL"));
-      return;
-    }
-    Serial.println(F(" REGISTERED"));
-  }
-
+  // Verify GPRS link at modem layer first
   if (!modem.isGprsConnected()) {
-    Serial.print(F("Attaching GPRS ("));
-    Serial.print(APN);
-    Serial.print(F(")..."));
-    if (!modem.gprsConnect(APN, GPRS_USER, GPRS_PASS)) {
-      Serial.println(F(" FAIL"));
-      return;
+    Serial.println(F("GPRS link dropped. Re-attaching..."));
+    if (!modem.isNetworkConnected()) {
+      modem.waitForNetwork(3000L);
     }
-    Serial.println(F(" ATTACHED"));
+    modem.gprsConnect(APN, GPRS_USER, GPRS_PASS);
+    return;
   }
 
   if (!mqttClient.connected()) {
     char clientId[32];
     snprintf(clientId, sizeof(clientId), "BusFleet-%s-%04d", BUS_PLATE, random(1000, 9999));
-    Serial.print(F("Connecting to HiveMQ ("));
-    Serial.print(clientId);
-    Serial.print(F(")..."));
-
+    
     if (mqttClient.connect(clientId)) {
-      Serial.println(F(" CONNECTED!"));
-    } else {
-      Serial.print(F(" FAIL (rc="));
-      Serial.print(mqttClient.state());
-      Serial.println(F(")"));
+      Serial.println(F("MQTT RECONNECTED STABLE!"));
     }
   }
 }
 
 void publishTelemetry(float spd) {
-  // Discard broadcast until GPS acquires a minimum 3D lock (4+ satellites)
+  // Discard until 3D satellite lock is secure (4+ satellites)
   if (!gps.location.isValid() || gps.location.lat() == 0.0 || gps.satellites.value() < 4) {
-    Serial.println(F("Waiting for 3D GPS satellite lock (skipping transmission)..."));
     return;
   }
 
@@ -152,36 +136,30 @@ void publishTelemetry(float spd) {
   int sats   = gps.satellites.value();
   double hdop = gps.hdop.isValid() ? gps.hdop.hdop() : 1.5;
 
-  // Latch heading when stationary to prevent marker spinning on the map
+  // Latch heading when stopped to prevent map marker rotation jitter
   if (spd >= 3.0 && gps.course.isValid()) {
     lastKnownHeading = gps.course.deg();
   }
 
-  // Pre-allocated char buffer prevents heap fragmentation on ESP8266
-  char payload[200];
-  snprintf(payload, sizeof(payload),
-    "{\"route\":\"%s\",\"bus_no\":\"%s\",\"lat\":%.6f,\"lng\":%.6f,\"spd\":%.1f,\"heading\":%.1f,\"alt\":%.1f,\"sats\":%d,\"hdop\":%.2f}",
-    ROUTE_ID,
-    BUS_PLATE,
-    lat,
-    lng,
-    spd,
-    lastKnownHeading,
-    alt,
-    sats,
-    hdop
-  );
-
-  Serial.print(F("Publishing to "));
-  Serial.print(MQTT_TOPIC);
-  Serial.print(F(" -> "));
+  char payload[220];
+  if (strlen(TRIP_DIRECTION) > 0) {
+    snprintf(payload, sizeof(payload),
+      "{\"route\":\"%s\",\"bus_no\":\"%s\",\"lat\":%.6f,\"lng\":%.6f,\"spd\":%.1f,\"heading\":%.1f,\"alt\":%.1f,\"sats\":%d,\"hdop\":%.2f,\"dir\":\"%s\"}",
+      ROUTE_ID, BUS_PLATE, lat, lng, spd, lastKnownHeading, alt, sats, hdop, TRIP_DIRECTION
+    );
+  } else {
+    snprintf(payload, sizeof(payload),
+      "{\"route\":\"%s\",\"bus_no\":\"%s\",\"lat\":%.6f,\"lng\":%.6f,\"spd\":%.1f,\"heading\":%.1f,\"alt\":%.1f,\"sats\":%d,\"hdop\":%.2f}",
+      ROUTE_ID, BUS_PLATE, lat, lng, spd, lastKnownHeading, alt, sats, hdop
+    );
+  }
 
   boolean success = mqttClient.publish(MQTT_TOPIC, payload);
 
   if (success) {
-    Serial.print(F("SUCCESS: "));
+    Serial.print(F("Published -> "));
     Serial.println(payload);
   } else {
-    Serial.println(F("FAILED (Packet dropped)"));
+    Serial.println(F("Publish FAILED (TCP Buffer Busy)"));
   }
 }
