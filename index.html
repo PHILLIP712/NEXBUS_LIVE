@@ -14,13 +14,13 @@
 </head>
 <body class="bg-slate-50 min-h-screen relative overflow-hidden font-sans antialiased text-slate-800">
 
-  <!-- Interactive Leaflet Map Canvas -->
+  <!-- Map Canvas -->
   <div id="map" class="absolute inset-0 z-0 h-full w-full"></div>
 
-  <!-- Top Search & Status Header -->
+  <!-- Top Search & Trip Header -->
   <header class="relative z-20 w-full pt-3 sm:pt-4 px-3 sm:px-4 flex flex-col items-center gap-2 pointer-events-none">
     
-    <!-- Active Trip & Dynamic Trip Metrics Banner -->
+    <!-- Active Trip Banner -->
     <div id="activeTripBar" class="hidden pointer-events-auto flex flex-col sm:flex-row sm:items-center justify-between w-full max-w-2xl bg-white/95 backdrop-blur-md px-3.5 py-2 sm:py-2.5 rounded-2xl shadow-xl border border-slate-200 text-xs gap-1.5 sm:gap-2 transition-all duration-300">
       <div class="flex items-center gap-2 flex-1 min-w-0">
         <span class="text-slate-400 font-bold uppercase text-[9px] sm:text-[10px] tracking-wider shrink-0 bg-slate-100 px-1.5 py-0.5 rounded-md">TRIP</span>
@@ -31,7 +31,6 @@
           <i data-lucide="navigation-2" class="w-3 h-3"></i>
           <span id="tripDistText">-- km</span> • <span id="tripDurationText">-- mins</span>
         </div>
-        <!-- Dynamic Route Status Badge -->
         <span id="connBadge" class="px-2 py-0.5 sm:py-1 rounded-full font-bold bg-slate-100 text-slate-600 border border-slate-200 shadow-sm flex items-center gap-1 text-[11px] whitespace-nowrap shrink-0">
           <span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
           <span>Scheduled</span>
@@ -39,10 +38,8 @@
       </div>
     </div>
 
-    <!-- Search Controls Card -->
+    <!-- Stop Search Form -->
     <div class="pointer-events-auto w-full max-w-2xl bg-white/95 backdrop-blur-md rounded-2xl shadow-xl border border-slate-100 p-2.5 sm:p-3 transition-all duration-200">
-
-      <!-- From Row -->
       <div>
         <label class="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1 leading-none">From</label>
         <div class="relative w-full mt-0.5">
@@ -50,13 +47,7 @@
             <div class="pl-3 pr-1.5 py-1.5 sm:py-2 flex items-center shrink-0">
               <span class="w-2.5 h-2.5 rounded-full bg-[#00ABE4] ring-4 ring-[#00ABE4]/15"></span>
             </div>
-            <input
-              id="pickup-input"
-              type="text"
-              autocomplete="off"
-              placeholder="Current location"
-              class="w-full bg-transparent py-1.5 text-xs sm:text-sm text-slate-800 placeholder-slate-400 font-semibold focus:outline-none"
-            />
+            <input id="pickup-input" type="text" autocomplete="off" placeholder="Current location" class="w-full bg-transparent py-1.5 text-xs sm:text-sm text-slate-800 placeholder-slate-400 font-semibold focus:outline-none" />
             <button id="pickup-clear" onclick="clearInput('pickup')" class="hidden pr-1 text-slate-400 hover:text-slate-600">
               <i data-lucide="x" class="w-3.5 h-3.5"></i>
             </button>
@@ -68,7 +59,6 @@
         </div>
       </div>
 
-      <!-- To Row -->
       <div class="mt-1.5">
         <label class="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1 leading-none">To</label>
         <div class="relative w-full mt-0.5">
@@ -76,23 +66,11 @@
             <div class="pl-3 pr-1.5 py-1.5 sm:py-2 flex items-center text-[#00ABE4] shrink-0">
               <i data-lucide="map-pin" class="w-4 h-4"></i>
             </div>
-            <input
-              id="dest-input"
-              type="text"
-              autocomplete="off"
-              placeholder="Where are you going?"
-              class="w-full bg-transparent py-1.5 text-xs sm:text-sm text-slate-800 placeholder-slate-400 font-semibold focus:outline-none"
-            />
+            <input id="dest-input" type="text" autocomplete="off" placeholder="Where are you going?" class="w-full bg-transparent py-1.5 text-xs sm:text-sm text-slate-800 placeholder-slate-400 font-semibold focus:outline-none" />
             <button id="dest-clear" onclick="clearInput('dest')" class="hidden pr-1 text-slate-400 hover:text-slate-600">
               <i data-lucide="x" class="w-3.5 h-3.5"></i>
             </button>
-            <button
-              id="swapBtn"
-              type="button"
-              onclick="swapPickupAndDestination()"
-              title="Swap Stops"
-              class="mr-1 my-1 shrink-0 w-7 h-7 rounded-lg bg-slate-100 hover:bg-[#00ABE4]/10 text-slate-500 hover:text-[#00ABE4] flex items-center justify-center transition-colors active:scale-95 group"
-            >
+            <button id="swapBtn" type="button" onclick="swapPickupAndDestination()" title="Swap Stops" class="mr-1 my-1 shrink-0 w-7 h-7 rounded-lg bg-slate-100 hover:bg-[#00ABE4]/10 text-slate-500 hover:text-[#00ABE4] flex items-center justify-center transition-colors active:scale-95 group">
               <i data-lucide="arrow-up-down" id="swapIcon" class="w-3.5 h-3.5 transition-transform duration-300"></i>
             </button>
           </div>
@@ -100,13 +78,12 @@
         </div>
       </div>
 
-      <!-- Find Buses Button -->
       <button onclick="handleSearchClick()" class="mt-2 w-full bg-[#00ABE4] hover:bg-[#0091C2] text-white font-bold text-xs sm:text-sm py-2 sm:py-2.5 rounded-xl shadow-lg shadow-[#00ABE4]/30 transition-colors flex items-center justify-center gap-2 active:scale-[0.98]">
         <i data-lucide="search" class="w-4 h-4"></i>
         <span>Find Buses</span>
       </button>
 
-      <!-- Quick Access Chips -->
+      <!-- Quick Chips -->
       <div class="mt-1.5 grid grid-cols-3 gap-1.5 sm:gap-2">
         <button id="chipHome" onclick="useQuickLocation('home')" onmousedown="startChipHold('home')" onmouseup="cancelChipHold()" onmouseleave="cancelChipHold()" ontouchstart="startChipHold('home')" ontouchend="cancelChipHold()" class="flex items-center justify-center gap-1.5 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-[#00ABE4]/5 hover:border-[#00ABE4]/30 text-slate-700 text-[11px] sm:text-xs font-bold transition-colors active:scale-[0.97]">
           <i data-lucide="home" class="w-3.5 h-3.5 text-slate-400"></i>
@@ -124,11 +101,10 @@
           <ul id="favoritesDropdown" class="hidden absolute top-full right-0 mt-1 w-60 bg-white rounded-xl shadow-2xl border border-slate-200 max-h-60 overflow-y-auto custom-scrollbar z-50 divide-y divide-slate-100"></ul>
         </div>
       </div>
-
     </div>
   </header>
 
-  <!-- Live Bus Status Floating Card -->
+  <!-- Floating Active Bus Telemetry -->
   <div id="floatingBusCard" class="hidden absolute bottom-5 left-1/2 -translate-x-1/2 z-10 w-full max-w-md px-3 sm:px-4 pointer-events-none transition-all duration-300">
     <div class="pointer-events-auto bg-white/95 backdrop-blur-md rounded-2xl shadow-xl border border-slate-200 p-3 sm:p-4 flex items-center justify-between">
       <div class="flex items-center gap-2.5 sm:gap-3 cursor-pointer min-w-0" onclick="openBottomSheet()">
@@ -155,15 +131,14 @@
     </div>
   </div>
 
-  <!-- Sliding Bottom Sheet Drawer -->
+  <!-- Bottom Drawer -->
   <div id="bottomSheet" class="bottom-sheet absolute bottom-0 left-0 right-0 h-[46dvh] sm:h-[50vh] md:h-[46vh] bg-white border-t-2 border-[#00ABE4] rounded-t-3xl shadow-2xl z-30 flex flex-col min-h-0">
-    <!-- Drag Handle Bar -->
     <div id="sheetDragHandle" class="sheet-drag-handle p-2 sm:p-2.5 flex flex-col items-center bg-slate-50 rounded-t-3xl border-b border-slate-200 shrink-0">
       <div class="w-10 h-1 bg-slate-300 rounded-full mb-1"></div>
       <div id="sheetTitleText" class="text-[11px] sm:text-xs font-bold text-slate-700 uppercase tracking-wider">Available Buses & Route Schedule</div>
     </div>
 
-    <!-- Mobile View Switcher Tabs -->
+    <!-- Mobile Switcher -->
     <div class="flex md:hidden border-b border-slate-200 bg-slate-100/80 p-1 gap-1 shrink-0">
       <button id="tabBusesBtn" onclick="switchMobileTab('buses')" class="flex-1 py-1.5 text-xs font-bold rounded-xl bg-white text-slate-900 shadow-sm transition-all flex items-center justify-center gap-1.5">
         <i data-lucide="bus" class="w-3.5 h-3.5 text-[#00ABE4]"></i>
@@ -175,12 +150,10 @@
       </button>
     </div>
 
-    <!-- Main Drawer Columns -->
+    <!-- Columns -->
     <div class="grid grid-cols-1 md:grid-cols-3 flex-1 overflow-hidden bg-white min-h-0">
-      <!-- Buses List Column -->
       <div id="busesListContainer" class="p-2.5 sm:p-3 pb-28 sm:pb-8 overflow-y-auto border-r border-slate-200 space-y-2 bg-slate-50/50 min-h-0 custom-scrollbar"></div>
 
-      <!-- Stop Schedule Column -->
       <div id="scheduleColumn" class="hidden md:flex md:col-span-2 flex-col overflow-hidden bg-white relative h-full min-h-0">
         <div id="scheduleToolbar" class="p-2 px-3 sm:p-2.5 sm:px-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between shrink-0">
           <div class="flex items-center gap-2">
@@ -190,23 +163,20 @@
         </div>
 
         <div id="scheduleContentArea" class="flex-1 overflow-y-auto pb-28 sm:pb-8 custom-scrollbar min-h-0">
-          <!-- Placeholder State -->
           <div id="noTrackPlaceholder" class="h-full flex flex-col items-center justify-center p-6 text-center text-slate-400 min-h-[220px]">
             <div class="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center mb-2.5 text-slate-400 shadow-inner">
               <i data-lucide="navigation" class="w-5 h-5 sm:w-6 sm:h-6"></i>
             </div>
             <h4 class="font-bold text-xs sm:text-sm text-slate-700">Ready to Navigate</h4>
-            <p class="text-[11px] sm:text-xs text-slate-400 max-w-xs mt-1">Tap <span class="font-bold text-[#00ABE4]">Track this bus</span> or <span class="font-bold text-violet-600">Track this bus & route</span> to start live tracking & view stop timings.</p>
+            <p class="text-[11px] sm:text-xs text-slate-400 max-w-xs mt-1">Tap <span class="font-bold text-[#00ABE4]">Track this bus</span> to start live tracking & view stop timings.</p>
           </div>
-
-          <!-- Stoppages Timeline -->
           <div id="stopsTimeline" class="hidden px-2.5 sm:px-3 py-1"></div>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- Available Corridor Routes Modal -->
+  <!-- Lines Modal -->
   <div id="linesModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm transition-opacity" onclick="closeLinesModal()">
     <div class="bg-white rounded-3xl shadow-2xl border border-slate-100 w-full max-w-md overflow-hidden transform transition-all" onclick="event.stopPropagation()">
       <div class="p-3.5 sm:p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
@@ -222,13 +192,13 @@
     </div>
   </div>
 
- <!-- Route Data Files -->
+  <!-- Route Data Files -->
   <script src="route/Blue-Yellow Buses (Private)/77a(nobata).js"></script>
   <script src="route/Blue-Yellow Buses (Private)/77a.js"></script>
   <script src="route/200 series/259.js"></script>
   <script src="route/mini series/s-126(bata mini).js"></script>
 
   <!-- Application Engine -->
-  <script src="app.js?v=6.1"></script>
+  <script src="app.js?v=8.0"></script>
 </body>
 </html>
