@@ -13,26 +13,25 @@ const char* APN               = "bsnlnet";
 const char* GPRS_USER         = "";
 const char* GPRS_PASS         = "";
 
-const char* MQTT_BROKER       = "broker.hivemq.com";
+// Switched to EMQX Public Broker (Faster & Higher Rate Limits)
+const char* MQTT_BROKER       = "broker.emqx.io";
 const int   MQTT_PORT         = 1883;
 const char* MQTT_TOPIC        = "citytransit/fleet/77a_nobata/wb42u2676/data";
 
 // Leave blank ("") so the web app's 4-tier engine handles direction automatically
 const char* TRIP_DIRECTION    = ""; 
 
-// Adaptive Transmission Intervals (Throttled when stationary to save 2G buffer)
-const unsigned long MOVING_INTERVAL_MS     = 3000;  // 3s while moving
-const unsigned long STATIONARY_INTERVAL_MS = 8000;  // 8s when stationary
-const unsigned long RECONNECT_INTERVAL_MS  = 5000;  // 5s between broker retry attempts
+// Option 1: Pushing 2G limits safely
+const unsigned long MOVING_INTERVAL_MS     = 3000;   // 3s while moving
+const unsigned long STATIONARY_INTERVAL_MS = 10000;  // 10s when stationary to clear TCP buffer
+const unsigned long RECONNECT_INTERVAL_MS  = 5000;   // 5s between broker retry attempts
 // ============================================================
 
-// SoftwareSerial for SIM800L (RX=D2/GPIO4, TX=D1/GPIO5)
 SoftwareSerial gsmSerial(4, 5);
 TinyGsm modem(gsmSerial);
 TinyGsmClient gsmClient(modem);
 PubSubClient mqttClient(gsmClient);
 
-// SoftwareSerial for GPS (RX=D5/GPIO14 -> GPS TX, TX=D6/GPIO12 -> GPS RX)
 SoftwareSerial gpsSerial(14, 12);
 TinyGPSPlus gps;
 
@@ -52,9 +51,8 @@ void setup() {
   gpsSerial.begin(9600);
   gpsSerial.listen();
 
-  Serial.println(F("\n--- Starting Scalable Fleet Tracker (Stable & Automated) ---"));
+  Serial.println(F("\n--- Starting Scalable Fleet Tracker (Optimized for 2G Edge Limits) ---"));
 
-  // Hardware Reset SIM800L on startup
   digitalWrite(GSM_RESET_PIN, LOW);
   delay(1000);
   digitalWrite(GSM_RESET_PIN, HIGH);
@@ -65,19 +63,17 @@ void setup() {
 
   mqttClient.setServer(MQTT_BROKER, MQTT_PORT);
   mqttClient.setBufferSize(256);
-  mqttClient.setKeepAlive(30);     // 30s keepalive ping to maintain open socket over 2G
-  mqttClient.setSocketTimeout(10); // 10s timeout allowance for slow carrier handoffs
+  mqttClient.setKeepAlive(60);     // Increased keepalive to prevent timeout drops
+  mqttClient.setSocketTimeout(15); // Increased socket allowance for slow carrier handoffs
 }
 
 void loop() {
-  // 1. Continuous background GPS decoding
   gpsSerial.listen();
   while (gpsSerial.available() > 0) {
     gps.encode(gpsSerial.read());
     yield();
   }
 
-  // 2. Network & MQTT session management
   gsmSerial.listen();
   if (!mqttClient.connected()) {
     unsigned long now = millis();
@@ -86,10 +82,9 @@ void loop() {
       maintainConnection();
     }
   } else {
-    mqttClient.loop(); // Keeps keep-alive ping/pong active
+    mqttClient.loop(); 
   }
 
-  // 3. Periodic Adaptive Telemetry Broadcast
   float spd = gps.speed.isValid() ? gps.speed.kmph() : 0.0;
   unsigned long activeInterval = (spd >= 3.0) ? MOVING_INTERVAL_MS : STATIONARY_INTERVAL_MS;
 
@@ -104,7 +99,6 @@ void loop() {
 }
 
 void maintainConnection() {
-  // Verify GPRS link at modem layer first
   if (!modem.isGprsConnected()) {
     Serial.println(F("GPRS link dropped. Re-attaching..."));
     if (!modem.isNetworkConnected()) {
@@ -125,8 +119,9 @@ void maintainConnection() {
 }
 
 void publishTelemetry(float spd) {
-  // Discard until 3D satellite lock is secure (4+ satellites)
-  if (!gps.location.isValid() || gps.location.lat() == 0.0 || gps.satellites.value() < 4) {
+  // Relaxed from 4 to 3 satellites to prevent map freezing under trees
+  if (!gps.location.isValid() || gps.location.lat() == 0.0 || gps.satellites.value() < 3) {
+    Serial.println(F("Skipping publish: Waiting for better GPS lock..."));
     return;
   }
 
@@ -136,7 +131,6 @@ void publishTelemetry(float spd) {
   int sats   = gps.satellites.value();
   double hdop = gps.hdop.isValid() ? gps.hdop.hdop() : 1.5;
 
-  // Latch heading when stopped to prevent map marker rotation jitter
   if (spd >= 3.0 && gps.course.isValid()) {
     lastKnownHeading = gps.course.deg();
   }

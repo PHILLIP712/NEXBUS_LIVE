@@ -1103,8 +1103,6 @@ function findMatchingRoutes(pName, dName) {
           let d2Idx = leg2.stops.findIndex(s => normalizeStr(s.name).includes(dNorm) || dNorm.includes(normalizeStr(s.name)) || (s.area && normalizeStr(s.area).includes(dNorm)));
           if (d2Idx === -1) continue;
 
-          // Note: directP2Idx check has been removed here to allow "Leapfrog" partial live transfers.
-
           const dStop = leg2.stops[d2Idx];
           const distPickupToDest = getDistanceMeters(pStop.lat, pStop.lng, dStop.lat, dStop.lng);
           const isSameDir = (leg1.dir === leg2.dir);
@@ -1897,7 +1895,6 @@ function updateAvailableBusesList() {
     });
   }
 
-  // 2. Process Direct Routes (Live & Scheduled) safely decoupled
   if (lastSearchResult.direct && lastSearchResult.direct.length > 0) {
     const viableBuses = [];
 
@@ -1963,7 +1960,6 @@ function updateAvailableBusesList() {
         }
       }
 
-      // Render Live Direct Cards (Priority 0)
       viableBuses.forEach((item, rank) => {
         const isSelected = (currentTripPlanType === "DIRECT" && item.plate === selectedBusPlate);
         const isBest = (rank === 0);
@@ -1993,7 +1989,7 @@ function updateAvailableBusesList() {
 
           <div class="flex items-center justify-between mt-2.5 gap-2">
             <div class="flex-1 min-w-0">
-              <div class="flex items-center gap-2 min-w-0"> <!-- FIX: Bound the wrapper to stop premature truncation collapse -->
+              <div class="flex items-center gap-2 min-w-0">
                 <span class="text-xl sm:text-2xl font-black text-[#10B981] tracking-tight shrink-0">${item.bus.route}</span>
                 <span class="text-xs font-bold text-slate-800 truncate">
                   ${selectedPickupStop ? selectedPickupStop.name : 'Origin'} 
@@ -2040,7 +2036,6 @@ function updateAvailableBusesList() {
         allCards.push({ priority: 0, etaSec: item.etaSec, elem: card });
       });
     } else {
-      // Direct Scheduled Cards Fallback (Priority 3)
       if (currentTripPlanType === "DIRECT" && floatingCard) {
          floatingCard.classList.add("hidden");
       }
@@ -2122,7 +2117,6 @@ function updateAvailableBusesList() {
     }
   }
 
-  // Sort strictly by Priority index
   allCards.sort((a, b) => a.priority - b.priority || a.etaSec - b.etaSec);
   allCards.forEach(c => container.appendChild(c.elem));
 
@@ -2355,7 +2349,7 @@ function recenterMap() {
 // ==========================================
 updateAvailableBusesList();
 
-const client = mqtt.connect('wss://broker.hivemq.com:8884/mqtt', {
+const client = mqtt.connect('wss://broker.emqx.io:8084/mqtt', {
   clientId: 'WebClient_' + Math.random().toString(16).substr(2, 8),
   keepalive: 60,
   clean: true,
@@ -2363,7 +2357,7 @@ const client = mqtt.connect('wss://broker.hivemq.com:8884/mqtt', {
 });
 
 client.on('connect', () => {
-  console.log('Connected to HiveMQ Unified Fleet Hub');
+  console.log('Connected to EMQX Unified Fleet Hub');
   updateTripStatusBadge();
   client.subscribe('citytransit/fleet/#', (err) => {
     if (err) console.error('Subscription error:', err);
@@ -2371,11 +2365,11 @@ client.on('connect', () => {
 });
 
 client.on('reconnect', () => {
-  console.log('Reconnecting to HiveMQ...');
+  console.log('Reconnecting to EMQX...');
 });
 
 client.on('offline', () => {
-  console.log('HiveMQ Offline');
+  console.log('EMQX Offline');
 });
 
 client.on('message', (topic, message) => {
@@ -2446,6 +2440,7 @@ client.on('message', (topic, message) => {
       activeBusMarkers[busPlate].setIcon(createDynamicBusMapIcon(routeConfig.name, busPlate, busHeading, destTerminal));
     }
     
+    // Anti-teleportation filter
     if (breadcrumbLines[busPlate]) {
       const latLngs = breadcrumbLines[busPlate].getLatLngs();
       if (latLngs.length > 0) {
