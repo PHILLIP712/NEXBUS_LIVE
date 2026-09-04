@@ -54,7 +54,15 @@ function findStopIndexInList(stops, targetStop) {
 // MOBILE VIEW TAB SWITCHER
 // ==========================================
 function switchMobileTab(tab) {
+  // Guard: Prevent tab switching & sheet opening if stops aren't selected
+  if (!selectedPickupStop || !selectedDestStop) {
+    showQuickToast("Please select both Pickup and Destination stops first!");
+    return;
+  }
+
   currentMobileTab = tab;
+  openBottomSheet(); // Expand sheet automatically when tapping peeking tabs
+
   const busesCol = document.getElementById("busesListContainer");
   const scheduleCol = document.getElementById("scheduleColumn");
   const tabBusesBtn = document.getElementById("tabBusesBtn");
@@ -66,16 +74,16 @@ function switchMobileTab(tab) {
       scheduleCol?.classList.remove('hidden');
       scheduleCol?.classList.add('flex');
       if (tabScheduleBtn && tabBusesBtn) {
-        tabScheduleBtn.className = "flex-1 py-1.5 text-xs font-bold rounded-xl bg-white text-slate-900 shadow-sm transition-all flex items-center justify-center gap-1.5";
-        tabBusesBtn.className = "flex-1 py-1.5 text-xs font-bold rounded-xl text-slate-500 hover:text-slate-800 transition-all flex items-center justify-center gap-1.5";
+        tabScheduleBtn.className = "flex-1 text-xs font-bold rounded-xl bg-[#00ABE4]/10 text-[#0091C2] border border-[#00ABE4]/20 shadow-sm transition-all flex items-center justify-center gap-1.5";
+        tabBusesBtn.className = "flex-1 text-xs font-bold rounded-xl bg-slate-50 text-slate-500 hover:bg-slate-100 border border-transparent transition-all flex items-center justify-center gap-1.5";
       }
     } else {
       busesCol?.classList.remove('hidden');
       scheduleCol?.classList.add('hidden');
       scheduleCol?.classList.remove('flex');
       if (tabScheduleBtn && tabBusesBtn) {
-        tabBusesBtn.className = "flex-1 py-1.5 text-xs font-bold rounded-xl bg-white text-slate-900 shadow-sm transition-all flex items-center justify-center gap-1.5";
-        tabScheduleBtn.className = "flex-1 py-1.5 text-xs font-bold rounded-xl text-slate-500 hover:text-slate-800 transition-all flex items-center justify-center gap-1.5";
+        tabBusesBtn.className = "flex-1 text-xs font-bold rounded-xl bg-[#00ABE4]/10 text-[#0091C2] border border-[#00ABE4]/20 shadow-sm transition-all flex items-center justify-center gap-1.5";
+        tabScheduleBtn.className = "flex-1 text-xs font-bold rounded-xl bg-slate-50 text-slate-500 hover:bg-slate-100 border border-transparent transition-all flex items-center justify-center gap-1.5";
       }
     }
   } else {
@@ -97,7 +105,10 @@ window.addEventListener('resize', () => {
       scheduleCol.classList.add('flex');
     }
   } else {
-    switchMobileTab(currentMobileTab);
+    // Only attempt to switch if a search was performed, otherwise leave layout alone
+    if (selectedPickupStop && selectedDestStop) {
+      switchMobileTab(currentMobileTab);
+    }
   }
 });
 
@@ -347,7 +358,6 @@ function checkLegLiveAvailability(routeKey, direction, maxStopIdx, stops) {
 // 4-TIER DIRECTION DETECTION (STABILIZED)
 // ==========================================
 function updateBusDirectionFromMovement(busPlate, newLat, newLng, newHeading, newSpeedKmph, payloadDir, routeConfig) {
-  // 1. Hardware Override
   if (payloadDir && (payloadDir.toUpperCase() === "UP" || payloadDir.toUpperCase() === "DOWN")) {
     return payloadDir.toUpperCase();
   }
@@ -358,19 +368,16 @@ function updateBusDirectionFromMovement(busPlate, newLat, newLng, newHeading, ne
   const fStops = routeConfig.forwardStops || [];
   const rStops = routeConfig.returnStops || [];
 
-  // 2. Terminal Geofence Lock (Prevents flipping when parked at ends of the line)
   if (fStops.length > 0 && rStops.length > 0 && newSpeedKmph < 10.0) {
     const dToUpStart = getDistanceMeters(newLat, newLng, fStops[0].lat, fStops[0].lng);
     const dToDownStart = getDistanceMeters(newLat, newLng, rStops[0].lat, rStops[0].lng);
     
-    if (dToUpStart < 300) return "UP";    // Locked to Start Terminal
-    if (dToDownStart < 300) return "DOWN";  // Locked to End Terminal
+    if (dToUpStart < 300) return "UP";    
+    if (dToDownStart < 300) return "DOWN";  
   }
 
-  // 3. Stop Progression Logic (Guarded against stationary GPS drift)
   if (prev && fStops.length > 0) {
     const moved = getDistanceMeters(prev.lat, prev.lng, newLat, newLng);
-    // Only evaluate stop progression if the bus actually moved 30+ meters AND is traveling at least 3 km/h
     if (moved >= 30.0 && newSpeedKmph >= 3.0) {
       const prevIdx = findBusNearestStopIndex(prev.lat, prev.lng, fStops);
       const currIdx = findBusNearestStopIndex(newLat, newLng, fStops);
@@ -379,18 +386,15 @@ function updateBusDirectionFromMovement(busPlate, newLat, newLng, newHeading, ne
     }
   }
 
-  // 4. Heading Fallback
   if (newSpeedKmph >= 3.0 && newHeading !== undefined && newHeading !== null && newHeading >= 0) {
     if (newHeading >= 15 && newHeading <= 165) return "UP";
     if (newHeading >= 195 && newHeading <= 345) return "DOWN";
   }
 
-  // 5. State Retention
   if (prev && prev.busDir) {
     return prev.busDir;
   }
 
-  // 6. Global Proximity Fallback
   if (fStops.length > 0 && rStops.length > 0) {
     const dToUpStart = getDistanceMeters(newLat, newLng, fStops[0].lat, fStops[0].lng);
     const dToDownStart = getDistanceMeters(newLat, newLng, rStops[0].lat, rStops[0].lng);
@@ -447,7 +451,7 @@ function setupStopAutocomplete(inputId, dropdownId, type) {
     matches.forEach(stop => {
       const li = document.createElement('li');
       li.className = 'px-3.5 py-2.5 hover:bg-[#00ABE4]/5 cursor-pointer flex items-center gap-3 transition-colors';
-      const iconColor = type === 'pickup' ? 'text-[#00ABE4] bg-[#00ABE4]/10' : 'text-[#00ABE4]/70 bg-[#00ABE4]/10';
+      const iconColor = type === 'pickup' ? 'text-[#10B981] bg-[#10B981]/10' : 'text-[#00ABE4]/70 bg-[#00ABE4]/10';
       const isFav = savedPlaces.favorites.some(f => normalizeStr(f.name) === normalizeStr(stop.name));
 
       li.innerHTML = `
@@ -799,43 +803,57 @@ function useCurrentLocationAsPickup() {
 
 loadSavedPlaces();
 
-function syncReopenTabVisibility() {
+function updateSheetToggleIcon() {
   const sheet = document.getElementById('bottomSheet');
-  const floatingCard = document.getElementById('floatingBusCard');
-  const reopenTab = document.getElementById('reopenSheetTab');
-  if (!sheet || !reopenTab) return;
-
-  const sheetClosed = !sheet.classList.contains('open');
-  const floatingVisible = floatingCard && !floatingCard.classList.contains('hidden');
-
-  if (sheetClosed && !floatingVisible) {
-    reopenTab.classList.remove('hidden');
+  const iconUp = document.getElementById('icon-up');
+  const iconDown = document.getElementById('icon-down');
+  if (!sheet || !iconUp || !iconDown) return;
+  
+  if (sheet.classList.contains('open')) {
+    iconUp.classList.add('hidden');
+    iconDown.classList.remove('hidden');
   } else {
-    reopenTab.classList.add('hidden');
+    iconUp.classList.remove('hidden');
+    iconDown.classList.add('hidden');
   }
 }
 
+// GUI Validation Guards for Bottom Sheet Toggle
 function toggleBottomSheet() {
-  document.getElementById('bottomSheet').classList.toggle('open');
-  syncReopenTabVisibility();
+  const sheet = document.getElementById('bottomSheet');
+  if (sheet) {
+    if (!sheet.classList.contains('open') && (!selectedPickupStop || !selectedDestStop)) {
+      showQuickToast("Please select both Pickup and Destination stops first!");
+      return;
+    }
+    sheet.classList.toggle('open');
+    updateSheetToggleIcon();
+  }
 }
 
 function openBottomSheet() {
-  document.getElementById('bottomSheet').classList.add('open');
-  syncReopenTabVisibility();
+  const sheet = document.getElementById('bottomSheet');
+  if (sheet) {
+    if (!sheet.classList.contains('open') && (!selectedPickupStop || !selectedDestStop)) {
+      showQuickToast("Please select both Pickup and Destination stops first!");
+      return;
+    }
+    sheet.classList.add('open');
+    updateSheetToggleIcon();
+  }
 }
 
 function closeBottomSheet() {
   const sheet = document.getElementById('bottomSheet');
   if (sheet && sheet.classList.contains('open')) {
     sheet.classList.remove('open');
+    updateSheetToggleIcon();
   }
-  syncReopenTabVisibility();
 }
 
 function initBottomSheetDrag() {
   const sheet = document.getElementById("bottomSheet");
-  const handle = document.getElementById("sheetDragHandle");
+  const handle = document.getElementById("sheetHeader"); 
   if (!sheet || !handle) return;
 
   let dragging = false;
@@ -1068,7 +1086,6 @@ function findMatchingRoutes(pName, dName) {
 
   const allRouteKeys = Object.keys(window.ROUTES_DATABASE);
 
-  // 1. Direct Routes Discovery
   for (const rKey of allRouteKeys) {
     const rObj = window.ROUTES_DATABASE[rKey];
     if (!rObj) continue;
@@ -1089,7 +1106,6 @@ function findMatchingRoutes(pName, dName) {
     }
   }
 
-  // 2. 1-Transfer Discovery
   for (const r1Key of allRouteKeys) {
     const r1 = window.ROUTES_DATABASE[r1Key];
     if (!r1) continue;
@@ -1225,7 +1241,7 @@ function handleSearchClick() {
   const destVal = document.getElementById("dest-input").value.trim();
 
   if (!pickVal || !destVal) {
-    alert("Please select both Pickup and Destination stops!");
+    showQuickToast("Please select both Pickup and Destination stops!");
     return;
   }
 
@@ -1585,9 +1601,10 @@ function renderRoutePins(autoFit = false) {
     const d2Idx = activeTransferPlan.leg2.dIdx;
 
     let approachPoints = [];
+    let busCurrentIdx = pIdx;
 
     if (activeBus) {
-      const busCurrentIdx = findBusNearestStopIndex(activeBus.lat, activeBus.lng, activeTransferPlan.leg1.stops);
+      busCurrentIdx = findBusNearestStopIndex(activeBus.lat, activeBus.lng, activeTransferPlan.leg1.stops);
       if (busCurrentIdx < pIdx) {
         approachPoints = [
           [activeBus.lat, activeBus.lng],
@@ -1651,29 +1668,48 @@ function renderRoutePins(autoFit = false) {
       }
     }
 
-    L.marker([selectedPickupStop.lat, selectedPickupStop.lng], { icon: createPinIcon("pickup") })
-      .bindPopup(`🟢 <b>Board Bus 1:</b> ${selectedPickupStop.name}`)
-      .addTo(stopMarkersLayer);
+    const startSpanIdx1 = Math.min(busCurrentIdx, pIdx);
+    const tripSegmentStops1 = activeTransferPlan.leg1.stops.slice(startSpanIdx1, tIdx + 1);
+    
+    tripSegmentStops1.forEach((stop, index) => {
+      const actualIdx = startSpanIdx1 + index;
+      let type = "regular";
+      let label = `<b>Stop:</b> ${stop.name}`;
 
-    const transferPt = activeTransferPlan.leg1.transferStop;
-    L.marker([transferPt.lat, transferPt.lng], { icon: createPinIcon("transfer") })
-      .bindPopup(`🔄 <b>Interchange Point:</b> ${transferPt.name}`)
-      .addTo(stopMarkersLayer);
-
-    L.marker([selectedDestStop.lat, selectedDestStop.lng], { icon: createPinIcon("dest") })
-      .bindPopup(`🔴 <b>Final Destination:</b> ${selectedDestStop.name}`)
-      .addTo(stopMarkersLayer);
-
-    if (activeBus) {
-      const busCurrentIdx = findBusNearestStopIndex(activeBus.lat, activeBus.lng, activeTransferPlan.leg1.stops);
-      if (busCurrentIdx < pIdx) {
-        const busStop = activeTransferPlan.leg1.stops[busCurrentIdx];
-        L.marker([busStop.lat, busStop.lng], { icon: createPinIcon("bus_loc") })
-          .bindPopup(`🟡 <b>Bus Current Location:</b> ${busStop.name}`)
-          .addTo(stopMarkersLayer);
+      if (actualIdx === pIdx) {
+        type = "pickup";
+        label = `🟢 <b>Board Bus 1:</b> ${stop.name}`;
+      } else if (actualIdx === tIdx) {
+        type = "transfer";
+        label = `🔄 <b>Interchange Point:</b> ${stop.name}`;
+      } else if (actualIdx === busCurrentIdx && busCurrentIdx < pIdx) {
+        type = "bus_loc";
+        label = `🟡 <b>Bus Current Location:</b> ${stop.name}`;
       }
-    }
-    return;
+
+      L.marker([stop.lat, stop.lng], { icon: createPinIcon(type) })
+        .bindPopup(label)
+        .addTo(stopMarkersLayer);
+    });
+
+    const tripSegmentStops2 = activeTransferPlan.leg2.stops.slice(t2Idx + 1, d2Idx + 1);
+    
+    tripSegmentStops2.forEach((stop, index) => {
+      const actualIdx = t2Idx + 1 + index;
+      let type = "regular";
+      let label = `<b>Stop:</b> ${stop.name}`;
+
+      if (actualIdx === d2Idx) {
+        type = "dest";
+        label = `🔴 <b>Final Destination:</b> ${stop.name}`;
+      }
+
+      L.marker([stop.lat, stop.lng], { icon: createPinIcon(type) })
+        .bindPopup(label)
+        .addTo(stopMarkersLayer);
+    });
+
+    return; // Render safely completed for transfers
   }
 
   const pIdx = findStopIndexInList(currentStopsList, selectedPickupStop);
@@ -1863,10 +1899,12 @@ function updateAvailableBusesList() {
 
         <div class="mt-2 sm:mt-2.5">
           <div class="flex items-baseline justify-between gap-2">
-            <div class="text-base sm:text-lg font-black ${isAllLive ? 'text-[#10B981]' : (isLeg1Live ? 'text-violet-700' : 'text-slate-700')} tracking-tight flex items-center gap-1.5 flex-wrap min-w-0">
-              <span>${r1Name}</span>
-              <span class="text-xs text-slate-400 font-normal">➔</span>
-              <span>${r2Name}</span>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2 min-w-0">
+                <span class="text-xl sm:text-2xl font-black ${isAllLive ? 'text-[#10B981]' : (isLeg1Live ? 'text-violet-700' : 'text-slate-700')} tracking-tight shrink-0">${r1Name}</span>
+                <span class="text-xs text-slate-400 font-normal">➔</span>
+                <span class="text-xl sm:text-2xl font-black ${isAllLive ? 'text-[#10B981]' : (isLeg1Live ? 'text-violet-700' : 'text-slate-700')} tracking-tight shrink-0">${r2Name}</span>
+              </div>
             </div>
             <div class="text-right shrink-0">
               <div class="text-sm sm:text-base font-black ${isAllLive ? 'text-[#10B981]' : (isLeg1Live ? 'text-violet-600' : 'text-slate-600')} leading-tight">${etaStr}</div>
@@ -1880,7 +1918,7 @@ function updateAvailableBusesList() {
             ${selectedDestStop ? selectedDestStop.name : 'Destination'}
           </div>
           <div class="text-[10px] ${isLeg1Live ? 'text-amber-800' : 'text-slate-500'} font-semibold mt-0.5 flex items-center gap-1 truncate">
-            <span>🔄 Change:</span>
+            <span class="shrink-0">🔄 Change:</span>
             <span class="underline truncate">${plan.transferStopName}</span>
             <span class="text-slate-400 font-normal shrink-0">(${totalStops} stops)</span>
           </div>
@@ -1986,6 +2024,8 @@ function updateAvailableBusesList() {
         const isBest = (rank === 0);
         const cardinalDir = (item.bus.busDir === "UP") ? "North Bound" : "South Bound";
         const isCurrentlyTracked = isTrackingConfirmed && isSelected;
+        const totalStopsCount = Math.max(1, (selectedDestStop && selectedPickupStop) ? 
+          (findStopIndexInList(currentStopsList, selectedDestStop) - findStopIndexInList(currentStopsList, selectedPickupStop) + 1) : 1);
 
         const card = document.createElement("div");
         card.className = `bg-white border ${isSelected ? 'border-[#10B981] ring-2 ring-[#10B981]/10' : 'border-slate-200'} hover:border-[#10B981] rounded-2xl p-2.5 sm:p-3 shadow-sm transition-all duration-200 hover:shadow-md cursor-pointer mb-2 sm:mb-2.5`;
@@ -2008,24 +2048,27 @@ function updateAvailableBusesList() {
             </span>
           </div>
 
-          <div class="flex items-center justify-between mt-2.5 gap-2">
-            <div class="flex-1 min-w-0">
-              <div class="flex items-center gap-2 min-w-0">
-                <span class="text-xl sm:text-2xl font-black text-[#10B981] tracking-tight shrink-0">${item.bus.route}</span>
-                <span class="text-xs font-bold text-slate-800 truncate">
-                  ${selectedPickupStop ? selectedPickupStop.name : 'Origin'} 
-                  <span class="text-slate-400 font-normal">➔</span> 
-                  ${selectedDestStop ? selectedDestStop.name : 'Destination'}
-                </span>
+          <div class="mt-2 sm:mt-2.5">
+            <div class="flex items-baseline justify-between gap-2">
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 min-w-0">
+                  <span class="text-xl sm:text-2xl font-black text-[#10B981] tracking-tight shrink-0">${item.bus.route}</span>
+                </div>
               </div>
-              <div class="text-[10px] sm:text-[11px] text-slate-400 truncate mt-0.5">
-                Near ${item.currentLocationName}
+              <div class="text-right shrink-0">
+                <div class="text-base sm:text-lg font-black text-[#10B981] leading-tight">${item.etaLabel}</div>
+                <div class="text-[9px] sm:text-[10px] text-slate-400 whitespace-nowrap">${item.stopsAway === 0 ? 'Approaching' : `${item.stopsAway} stops away`}</div>
               </div>
             </div>
 
-            <div class="text-right shrink-0">
-              <div class="text-base sm:text-lg font-black text-[#10B981] leading-tight">${item.etaLabel}</div>
-              <div class="text-[9px] sm:text-[10px] text-slate-400 whitespace-nowrap">${item.stopsAway === 0 ? 'Approaching' : `${item.stopsAway} stops away`}</div>
+            <div class="text-xs font-bold text-slate-800 truncate mt-1">
+              ${selectedPickupStop ? selectedPickupStop.name : 'Origin'} 
+              <span class="text-slate-400 font-normal">➔</span> 
+              ${selectedDestStop ? selectedDestStop.name : 'Destination'}
+            </div>
+            <div class="text-[10px] text-slate-500 font-semibold mt-0.5 flex items-center gap-1 truncate">
+              <span class="shrink-0">Near ${item.currentLocationName}</span>
+              <span class="text-slate-400 font-normal shrink-0">(${totalStopsCount} stops)</span>
             </div>
           </div>
 
@@ -2089,11 +2132,6 @@ function updateAvailableBusesList() {
               <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-2 min-w-0">
                   <span class="text-xl sm:text-2xl font-black text-slate-700 tracking-tight shrink-0">${config.name}</span>
-                  <span class="text-xs font-bold text-slate-800 truncate">
-                    ${selectedPickupStop ? selectedPickupStop.name : 'Origin'} 
-                    <span class="text-slate-400 font-normal">➔</span> 
-                    ${selectedDestStop ? selectedDestStop.name : 'Destination'}
-                  </span>
                 </div>
               </div>
               <div class="text-right shrink-0">
@@ -2102,6 +2140,11 @@ function updateAvailableBusesList() {
               </div>
             </div>
 
+            <div class="text-xs font-bold text-slate-800 truncate mt-1">
+              ${selectedPickupStop ? selectedPickupStop.name : 'Origin'} 
+              <span class="text-slate-400 font-normal">➔</span> 
+              ${selectedDestStop ? selectedDestStop.name : 'Destination'}
+            </div>
             <div class="text-[10px] text-slate-500 font-semibold mt-0.5 flex items-center gap-1 truncate">
               <span>Direct Corridor</span>
               <span class="text-slate-400 font-normal shrink-0">(${totalStopsCount} stops)</span>
