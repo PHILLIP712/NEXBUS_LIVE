@@ -447,7 +447,7 @@ function setupStopAutocomplete(inputId, dropdownId, type) {
     matches.forEach(stop => {
       const li = document.createElement('li');
       li.className = 'px-3.5 py-2.5 hover:bg-[#00ABE4]/5 cursor-pointer flex items-center gap-3 transition-colors';
-      const iconColor = type === 'pickup' ? 'text-[#10B981] bg-[#10B981]/10' : 'text-[#00ABE4]/70 bg-[#00ABE4]/10';
+      const iconColor = type === 'pickup' ? 'text-[#00ABE4] bg-[#00ABE4]/10' : 'text-[#00ABE4]/70 bg-[#00ABE4]/10';
       const isFav = savedPlaces.favorites.some(f => normalizeStr(f.name) === normalizeStr(stop.name));
 
       li.innerHTML = `
@@ -799,12 +799,30 @@ function useCurrentLocationAsPickup() {
 
 loadSavedPlaces();
 
+function syncReopenTabVisibility() {
+  const sheet = document.getElementById('bottomSheet');
+  const floatingCard = document.getElementById('floatingBusCard');
+  const reopenTab = document.getElementById('reopenSheetTab');
+  if (!sheet || !reopenTab) return;
+
+  const sheetClosed = !sheet.classList.contains('open');
+  const floatingVisible = floatingCard && !floatingCard.classList.contains('hidden');
+
+  if (sheetClosed && !floatingVisible) {
+    reopenTab.classList.remove('hidden');
+  } else {
+    reopenTab.classList.add('hidden');
+  }
+}
+
 function toggleBottomSheet() {
   document.getElementById('bottomSheet').classList.toggle('open');
+  syncReopenTabVisibility();
 }
 
 function openBottomSheet() {
   document.getElementById('bottomSheet').classList.add('open');
+  syncReopenTabVisibility();
 }
 
 function closeBottomSheet() {
@@ -812,6 +830,7 @@ function closeBottomSheet() {
   if (sheet && sheet.classList.contains('open')) {
     sheet.classList.remove('open');
   }
+  syncReopenTabVisibility();
 }
 
 function initBottomSheetDrag() {
@@ -1398,7 +1417,8 @@ function startTracking() {
 
   hasAutoScrolledForCurrentTrip = false;
   isTrackingConfirmed = true;
-  
+
+  document.getElementById("stopSearchForm")?.classList.add("hidden");
   document.getElementById("stopsTimeline")?.classList.remove("hidden");
   document.getElementById("noTrackPlaceholder")?.classList.add("hidden");
 
@@ -1424,6 +1444,7 @@ function startTracking() {
 function cancelTracking() {
   isTrackingConfirmed = false;
 
+  document.getElementById("stopSearchForm")?.classList.remove("hidden");
   document.getElementById("stopsTimeline")?.classList.add("hidden");
   document.getElementById("noTrackPlaceholder")?.classList.remove("hidden");
 
@@ -2128,6 +2149,7 @@ function updateAvailableBusesList() {
   }
 
   lucide.createIcons();
+  syncReopenTabVisibility();
 }
 
 function selectBus(plate) {
