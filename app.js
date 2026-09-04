@@ -54,12 +54,6 @@ function findStopIndexInList(stops, targetStop) {
 // MOBILE VIEW TAB SWITCHER
 // ==========================================
 function switchMobileTab(tab) {
-  // Guard: Prevent tab switching & sheet opening if stops aren't selected
-  if (!selectedPickupStop || !selectedDestStop) {
-    showQuickToast("Please select both Pickup and Destination stops first!");
-    return;
-  }
-
   currentMobileTab = tab;
   openBottomSheet(); // Expand sheet automatically when tapping peeking tabs
 
@@ -105,10 +99,7 @@ window.addEventListener('resize', () => {
       scheduleCol.classList.add('flex');
     }
   } else {
-    // Only attempt to switch if a search was performed, otherwise leave layout alone
-    if (selectedPickupStop && selectedDestStop) {
-      switchMobileTab(currentMobileTab);
-    }
+    switchMobileTab(currentMobileTab);
   }
 });
 
@@ -818,14 +809,9 @@ function updateSheetToggleIcon() {
   }
 }
 
-// GUI Validation Guards for Bottom Sheet Toggle
 function toggleBottomSheet() {
   const sheet = document.getElementById('bottomSheet');
   if (sheet) {
-    if (!sheet.classList.contains('open') && (!selectedPickupStop || !selectedDestStop)) {
-      showQuickToast("Please select both Pickup and Destination stops first!");
-      return;
-    }
     sheet.classList.toggle('open');
     updateSheetToggleIcon();
   }
@@ -834,10 +820,6 @@ function toggleBottomSheet() {
 function openBottomSheet() {
   const sheet = document.getElementById('bottomSheet');
   if (sheet) {
-    if (!sheet.classList.contains('open') && (!selectedPickupStop || !selectedDestStop)) {
-      showQuickToast("Please select both Pickup and Destination stops first!");
-      return;
-    }
     sheet.classList.add('open');
     updateSheetToggleIcon();
   }
@@ -1086,6 +1068,7 @@ function findMatchingRoutes(pName, dName) {
 
   const allRouteKeys = Object.keys(window.ROUTES_DATABASE);
 
+  // 1. Direct Routes Discovery
   for (const rKey of allRouteKeys) {
     const rObj = window.ROUTES_DATABASE[rKey];
     if (!rObj) continue;
@@ -1106,6 +1089,7 @@ function findMatchingRoutes(pName, dName) {
     }
   }
 
+  // 2. 1-Transfer Discovery
   for (const r1Key of allRouteKeys) {
     const r1 = window.ROUTES_DATABASE[r1Key];
     if (!r1) continue;
@@ -1241,7 +1225,7 @@ function handleSearchClick() {
   const destVal = document.getElementById("dest-input").value.trim();
 
   if (!pickVal || !destVal) {
-    showQuickToast("Please select both Pickup and Destination stops!");
+    alert("Please select both Pickup and Destination stops!");
     return;
   }
 
@@ -2192,7 +2176,6 @@ function updateAvailableBusesList() {
   }
 
   lucide.createIcons();
-  syncReopenTabVisibility();
 }
 
 function selectBus(plate) {
