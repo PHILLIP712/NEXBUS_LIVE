@@ -39,7 +39,7 @@
     </div>
 
     <!-- Stop Search Form -->
-    <div class="pointer-events-auto w-full max-w-2xl bg-white/95 backdrop-blur-md rounded-2xl shadow-xl border border-slate-100 p-2.5 sm:p-3 transition-all duration-200">
+    <div id="stopSearchForm" class="pointer-events-auto w-full max-w-2xl bg-white/95 backdrop-blur-md rounded-2xl shadow-xl border border-slate-100 p-2.5 sm:p-3 transition-all duration-200">
       <div>
         <label class="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider pl-1 leading-none">From</label>
         <div class="relative w-full mt-0.5">
@@ -107,28 +107,21 @@
   <!-- Floating Active Bus Telemetry -->
   <div id="floatingBusCard" class="hidden absolute bottom-5 left-1/2 -translate-x-1/2 z-10 w-full max-w-md px-3 sm:px-4 pointer-events-none transition-all duration-300">
     <div class="pointer-events-auto bg-white/95 backdrop-blur-md rounded-2xl shadow-xl border border-slate-200 p-3 sm:p-4 flex items-center justify-between">
-      
-      <!-- FIX: Explicit flex-1 forces the container to use its boundary rather than collapsing -->
-      <div class="flex items-center gap-2.5 sm:gap-3 cursor-pointer min-w-0 flex-1" onclick="openBottomSheet()">
+      <div class="flex items-center gap-2.5 sm:gap-3 cursor-pointer min-w-0" onclick="openBottomSheet()">
         <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-[#00ABE4] text-white flex items-center justify-center shadow-md shadow-[#00ABE4]/20 shrink-0">
           <i data-lucide="bus" class="w-4 h-4 sm:w-5 sm:h-5"></i>
         </div>
-        
-        <div class="min-w-0 flex-1">
-          <div class="flex items-center gap-1.5 min-w-0">
-            <div id="floatBusPlate" class="flex items-center gap-1.5 min-w-0">
-              <span class="font-bold text-slate-900 text-xs sm:text-sm shrink-0">--</span>
-            </div>
-            <span id="floatLivePill" class="px-1.5 py-[2px] rounded-full text-[10px] font-semibold bg-[#00ABE4]/10 text-[#0091C2] border border-[#00ABE4]/30 shrink-0">Live</span>
+        <div class="min-w-0">
+          <div class="flex items-center gap-1.5">
+            <h4 id="floatBusPlate" class="font-bold text-slate-900 text-xs sm:text-sm truncate">--</h4>
+            <span id="floatLivePill" class="px-1.5 py-0.2 rounded-full text-[10px] font-semibold bg-[#00ABE4]/10 text-[#0091C2] border border-[#00ABE4]/30 shrink-0">Live</span>
           </div>
           <p id="floatTelemetry" class="text-[11px] text-slate-500 font-medium mt-0.5 truncate">Speed: 0.0 km/h</p>
         </div>
-        
       </div>
-      
       <div class="flex items-center gap-1.5 sm:gap-2 shrink-0">
         <button onclick="openBottomSheet()" class="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl border border-slate-200 transition flex items-center gap-1">
-          <i data-lucide="list" class="w-3.5 h-3.5"></i>
+          <i data-lucide="chevron-up" class="w-3.5 h-3.5"></i>
           <span class="hidden sm:inline">Buses</span>
         </button>
         <button onclick="recenterMap()" class="p-1.5 sm:p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl border border-slate-200 transition">
@@ -138,11 +131,18 @@
     </div>
   </div>
 
+  <!-- Reopen Bottom Sheet (shown when sheet is closed and no bus is being tracked) -->
+  <button id="reopenSheetTab" onclick="openBottomSheet()" class="hidden absolute bottom-5 left-1/2 -translate-x-1/2 z-10 w-11 h-11 rounded-full bg-white/95 backdrop-blur-md shadow-xl border border-slate-200 flex items-center justify-center text-[#00ABE4] active:scale-95 transition-transform" title="Show buses">
+    <i data-lucide="chevron-up" class="w-5 h-5"></i>
+  </button>
+
   <!-- Bottom Drawer -->
-  <div id="bottomSheet" class="bottom-sheet absolute bottom-0 left-0 right-0 h-[46dvh] sm:h-[50vh] md:h-[46vh] bg-white border-t-2 border-[#00ABE4] rounded-t-3xl shadow-2xl z-30 flex flex-col min-h-0">
+  <div id="bottomSheet" class="bottom-sheet absolute bottom-0 left-0 right-0 h-[54dvh] sm:h-[58vh] md:h-[54vh] bg-white border-t-2 border-[#00ABE4] rounded-t-3xl shadow-2xl z-30 flex flex-col min-h-0">
     <div id="sheetDragHandle" class="sheet-drag-handle p-2 sm:p-2.5 flex flex-col items-center bg-slate-50 rounded-t-3xl border-b border-slate-200 shrink-0">
-      <div class="w-10 h-1 bg-slate-300 rounded-full mb-1"></div>
-      <div id="sheetTitleText" class="text-[11px] sm:text-xs font-bold text-slate-700 uppercase tracking-wider">Available Buses & Route Schedule</div>
+      <div class="w-10 h-1 bg-slate-300 rounded-full mb-1.5"></div>
+      <button onmousedown="event.stopPropagation()" ontouchstart="event.stopPropagation()" onclick="event.stopPropagation(); closeBottomSheet();" title="Collapse" class="w-7 h-7 -mb-0.5 rounded-full hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors active:scale-95">
+        <i data-lucide="chevron-down" class="w-4 h-4"></i>
+      </button>
     </div>
 
     <!-- Mobile Switcher -->
@@ -206,6 +206,6 @@
   <script src="route/mini series/s-126(bata mini).js"></script>
 
   <!-- Application Engine -->
-  <script src="app.js?v=9.1"></script>
+  <script src="app.js?v=8.0"></script>
 </body>
 </html>
